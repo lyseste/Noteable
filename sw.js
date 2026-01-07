@@ -3,8 +3,8 @@ const CACHE_NAME = 'noteable-cache-${CACHE_VERSION}';
 const FILES_TO_CACHE = [
   './',
   './index.html',
-  './icon512.png',
-  './icon128.png',
+  './icons/icon512.png',
+  './icons/icon128.png',
   './manifest.json'
 ];
 
@@ -39,4 +39,5 @@ self.addEventListener('fetch', (event) => {
       );
     })
   );
+
 });
