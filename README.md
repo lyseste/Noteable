@@ -18,7 +18,7 @@ Noteable runs directly in your browser, and can be installed locally as a Progre
 Just [open the app](https://lyseste.github.io/Noteable) in your browser, and click install in the search bar to add the PWA to your toolbar.
 
 ## ✨ What's new
-### Version 1.6.1 (January 2026)
+### Version 1.6 (January 2026)
 **Highlights**
 - Cleaned up app interface and moved Export and Import buttons to a new menu, with Settings and About dialogs
 - Added theme customization to settings which allows users to personalize the colors of their app
