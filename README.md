@@ -22,5 +22,6 @@ Just [open the app](https://lyseste.github.io/Noteable) in your browser, and cli
 **Highlights**
 - Cleaned up app interface and moved Export and Import buttons to a new menu, with Settings and About dialogs
 - Added theme customization to settings which allows users to personalize the colors of their app
+- Save selected colors as theme, switch and manage themes, export, and import themes from file
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
