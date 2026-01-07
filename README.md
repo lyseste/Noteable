@@ -2,7 +2,7 @@
   <span>Noteable</span>
 </h1>
 <p align="center">
-  <span align="center">Noteable is a more organized way to quickly copy notes. Keep track of your notes with multiple tabs, and customize the app to your liking.</span>
+  <span align="center">Noteable is a progressive web app to organize and quickly copy notes. Keep track of your notes with multiple tabs, and customize the app to your liking.</span>
 </p>
 <h3 align="center">
   <a href="https://lyseste.github.io/Noteable">Open App</a>
