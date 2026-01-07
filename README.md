@@ -9,7 +9,6 @@
   <span> · </span>
   <a href="https://github.com/lyseste/Noteable/wiki/Version-History">Version History</a>
 </h3>
-<br/><br/>
 
 ---
 
