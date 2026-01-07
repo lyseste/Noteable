@@ -1,4 +1,4 @@
-const CACHE_VERSION = '260107.1149';
+const CACHE_VERSION = '260107.1316';
 const CACHE_NAME = 'noteable-cache-${CACHE_VERSION}';
 const FILES_TO_CACHE = [
   './',
@@ -41,3 +41,4 @@ self.addEventListener('fetch', (event) => {
   );
 
 });
+
