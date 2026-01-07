@@ -1,5 +1,5 @@
 {
-  "name": "Noteable by Lys",
+  "name": "Noteable",
   "short_name": "Noteable",
   "description": "Manage and quickly copy notes, with multiple tabs and customizeable fields",
   "start_url": "./index.html",
@@ -21,3 +21,4 @@
     }
   ]
 }
+
