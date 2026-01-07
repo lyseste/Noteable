@@ -1,23 +1,25 @@
-const CACHE_VERSION = '260107.1316';
-const CACHE_NAME = 'noteable-cache-${CACHE_VERSION}';
+const CACHE_VERSION = '260107.1700';
+const CACHE_NAME = `noteable-cache-${CACHE_VERSION}`;
 const FILES_TO_CACHE = [
   './',
   './index.html',
+  './style.css',
+  './app.js',
   './icons/icon512.png',
   './icons/icon128.png',
   './manifest.json'
 ];
 
+// Install: cache all files
 self.addEventListener('install', (event) => {
   console.log('[ServiceWorker] Installing...');
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(FILES_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
   );
 });
 
+// Activate: delete old caches
 self.addEventListener('activate', (event) => {
   console.log('[ServiceWorker] Activating...');
   event.waitUntil(
@@ -28,6 +30,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Fetch: serve from cache first
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
@@ -39,6 +42,11 @@ self.addEventListener('fetch', (event) => {
       );
     })
   );
-
 });
 
+// --- Notify clients when a new SW is waiting ---
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
