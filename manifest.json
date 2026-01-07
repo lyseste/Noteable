@@ -1,0 +1,23 @@
+{
+  "name": "Noteable by Lys",
+  "short_name": "Noteable",
+  "description": "Manage and quickly copy notes, with multiple tabs and customizeable fields",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "preferred_width": 136,
+  "icons": [
+    {
+      "src": "icons/icon512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    }
+  ]
+}
