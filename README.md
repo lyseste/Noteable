@@ -9,16 +9,13 @@
   <span> · </span>
   <a href="https://github.com/lyseste/Noteable/wiki/Version-History">Version History</a>
 </h3>
-
----
+<br/><br/>
 
 ## 📋 Installation
 
 Noteable runs directly in your browser, and can be installed locally as a Progressive Web App.
 
 Just [open the app](https://lyseste.github.io/Noteable) in your browser, and click install in the search bar to add the PWA to your toolbar.
-
----
 
 ## ✨ What's new
 **Version 1.6.1 (January 2026)**
