@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="./style.css" />
+    <link rel="icon" type="image/x-icon" href="./icon512.png" />
     <script src="./app.js" defer></script>
-    <meta name="theme-color" content="#161616" />
-    <meta name="app-version" content="1.6.2" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="app-version" content="1.6.3" />
     <title>Noteable</title>
   </head>
 
@@ -105,14 +106,14 @@
           </button>
         </div>
         <div class="theme-actions">
-          <button id="addThemeBtn" type="button" class="ghost small">
-            Add theme
-          </button>
-          <button id="exportThemeBtn" type="button" class="ghost small">
+          <button id="exportThemeBtn" title="Export current colors to JSON" type="button" class="ghost small">
             Export theme
           </button>
-          <button id="importThemeBtn" type="button" class="ghost small">
+          <button id="importThemeBtn" title="Import theme from JSON" type="button" class="ghost small">
             Import theme
+          </button>
+          <button id="reapplyThemeBtn" title="Reapply current theme" type="button" class="ghost small">
+            Reapply theme
           </button>
           <input
             id="importThemeFile"
@@ -122,7 +123,7 @@
           />
         </div>
 
-        <p>Theme</p>
+        <p>Colors</p>
         <div class="color-row">
           <label>Background</label>
           <div class="color-controls">
@@ -136,14 +137,6 @@
           <div class="color-controls">
             <input type="color" id="appColor" data-css-var="--app" />
             <input type="text" class="color-text" placeholder="#111725" />
-          </div>
-        </div>
-
-        <div class="color-row">
-          <label>Panel</label>
-          <div class="color-controls">
-            <input type="color" id="panelColor" data-css-var="--panel" />
-            <input type="text" class="color-text" placeholder="#111827" />
           </div>
         </div>
 
@@ -196,8 +189,14 @@
         </div>
 
         <div class="dialog-actions">
-          <button id="resetColorsBtn">Reset to default</button>
-          <button onclick="settingsDialog.close()">Close</button>
+          <div class="dialog-actions-left">
+            <button id="addThemeBtn">Create new theme</button>
+            <button id="applyThemeBtn">Apply to current theme</button>
+          </div>
+          <div class="dialog-actions-right">
+            <button id="resetColorsBtn">Reset to default</button>
+            <button onclick="settingsDialog.close()">Close</button>
+          </div>
         </div>
       </dialog>
 
@@ -212,7 +211,9 @@
         <p>Right-click tabs to rename, double-click to delete</p>
         <span id="aboutVersion"></span>
         <p>
-          <a href="https://github.com/lyseste/Noteable" target="_blank"> GitHub </a>
+          <a href="https://github.com/lyseste/Noteable" target="_blank">
+            GitHub
+          </a>
         </p>
         <p>© 2026 Joakim Virik</p>
         <div class="dialog-actions">

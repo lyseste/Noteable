@@ -17,24 +17,72 @@ const searchInput = document.createElement("input");
 
 const THEMES_KEY = "noteable.themes";
 const ACTIVE_THEME_KEY = "noteable.activeTheme";
-const DEFAULT_THEME_NAME = "Default theme";
-
+const LIVE_COLORS_KEY = "noteable.liveColors";
 const DEFAULT_COLORS = {
-  "--bg": "#161616",
-  "--app": "#111725",
-  "--panel": "#111827",
-  "--field": "#0f172a",
-  "--muted": "#94a3b8",
-  "--text": "#e5e7eb",
-  "--accent": "#22c55e",
-  "--accent-2": "#60a5fa",
-  "--border": "#1f2937",
+  "--bg": "#0a0a0a",
+  "--app": "#141414",
+  "--field": "#1e1e1e",
+  "--muted": "#969696",
+  "--text": "#dcdcdc",
+  "--accent": "#5498ff",
+  "--accent-2": "#5498ff",
+  "--border": "#323232",
 };
+const DEFAULT_THEMES = {
+  "Default Dark": {
+    "--bg": "#0a0a0a",
+    "--app": "#141414",
+    "--field": "#1e1e1e",
+    "--muted": "#969696",
+    "--text": "#dcdcdc",
+    "--accent": "#5498ff",
+    "--accent-2": "#5498ff",
+    "--border": "#323232",
+  },
+  "Default Light": {
+    "--bg": "#0a0a0a",
+    "--app": "#ffffff",
+    "--field": "#e5e7eb",
+    "--muted": "#475569",
+    "--text": "#0f172a",
+    "--accent": "#5498ff",
+    "--accent-2": "#5498ff",
+    "--border": "#cbd5e1",
+  },
+};
+function isDefaultTheme(name) {
+  return name in DEFAULT_THEMES;
+}
+function getDefaultThemeNames() {
+  return Object.keys(DEFAULT_THEMES);
+}
+function ensureThemesInitialized() {
+  if (!localStorage.getItem(THEMES_KEY)) {
+    localStorage.setItem(THEMES_KEY, JSON.stringify([])); // user themes only
+  }
+}
+function loadLiveColors() {
+  const raw = localStorage.getItem(LIVE_COLORS_KEY);
+  if (!raw) return false;
 
-const DEFAULT_THEME = {
-  name: DEFAULT_THEME_NAME,
-  colors: { ...DEFAULT_COLORS },
-};
+  try {
+    const colors = JSON.parse(raw);
+    for (const key in colors) {
+      document.documentElement.style.setProperty(key, colors[key]);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+ensureThemesInitialized();
+
+const liveRestored = loadLiveColors();
+if (!liveRestored) {
+  const active = localStorage.getItem(ACTIVE_THEME_KEY) || "Default Dark";
+  applyThemeByName(active, { clearLive: false });
+}
 
 searchInput.type = "text";
 searchInput.placeholder = "Search fields in this tab...";
@@ -88,17 +136,6 @@ function ensureDefault() {
     saveState();
   }
 }
-
-function ensureThemesInitialized() {
-  const raw = localStorage.getItem(THEMES_KEY);
-  if (raw) return;
-
-  localStorage.setItem(THEMES_KEY, JSON.stringify([DEFAULT_THEME]));
-
-  localStorage.setItem(ACTIVE_THEME_KEY, DEFAULT_THEME_NAME);
-}
-
-ensureThemesInitialized();
 
 // --- TAB RENDERING WITH DRAG ---
 function renderTabs() {
@@ -598,41 +635,17 @@ settingsDialog.addEventListener("input", (e) => {
 
   document.documentElement.style.setProperty(cssVar, input.value);
 
-  saveThemeToStorage();
+  saveLiveColors();
 });
 
-function saveThemeToStorage() {
-  const theme = {};
-  for (const key in DEFAULT_COLORS) {
-    theme[key] = getComputedStyle(document.documentElement)
-      .getPropertyValue(key)
-      .trim();
-  }
-  localStorage.setItem("noteable.theme", JSON.stringify(theme));
+function saveLiveColors() {
+  const colors = getCurrentColors();
+  localStorage.setItem(LIVE_COLORS_KEY, JSON.stringify(colors));
 }
-
-function loadThemeFromStorage() {
-  const raw = localStorage.getItem("noteable.theme");
-  if (!raw) return;
-
-  try {
-    const theme = JSON.parse(raw);
-    for (const key in theme) {
-      document.documentElement.style.setProperty(key, theme[key]);
-    }
-  } catch {}
-}
-
-loadThemeFromStorage();
 
 document.getElementById("resetColorsBtn").addEventListener("click", () => {
-  for (const key in DEFAULT_COLORS) {
-    document.documentElement.style.setProperty(key, DEFAULT_COLORS[key]);
-  }
-
-  localStorage.removeItem("noteable.theme");
-
-  // Update inputs visually
+  applyThemeByName("Default Dark");
+  localStorage.removeItem(LIVE_COLORS_KEY);
   openSettings();
 });
 
@@ -641,7 +654,7 @@ function setupColorPicker(colorInput, textInput, cssVar) {
   colorInput.addEventListener("input", () => {
     textInput.value = colorInput.value;
     document.documentElement.style.setProperty(cssVar, colorInput.value);
-    saveTheme();
+    saveLiveColors();
   });
 
   // Text input → color picker + CSS var
@@ -650,10 +663,249 @@ function setupColorPicker(colorInput, textInput, cssVar) {
     if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(val)) {
       colorInput.value = val;
       document.documentElement.style.setProperty(cssVar, val);
-      saveTheme();
+      saveLiveColors();
     }
   });
 }
+
+// Themes
+function loadThemes() {
+  return JSON.parse(localStorage.getItem(THEMES_KEY) || "[]");
+}
+
+function saveThemes(themes) {
+  localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
+}
+
+function renderThemeSelect() {
+  const select = document.getElementById("themeSelect");
+  select.innerHTML = "";
+
+  // Default themes
+  Object.keys(DEFAULT_THEMES).forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+
+  // User themes
+  loadThemes().forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = t.name;
+    opt.textContent = t.name;
+    select.appendChild(opt);
+  });
+
+  // Restore active theme
+  const active = localStorage.getItem(ACTIVE_THEME_KEY) || "Default Dark";
+  select.value = active;
+}
+renderThemeSelect();
+
+function applyThemeByName(name, options = { clearLive: true }) {
+  let colors;
+
+  if (options.clearLive) {
+    localStorage.removeItem(LIVE_COLORS_KEY); // only remove if explicitly requested
+  }
+
+  localStorage.setItem(ACTIVE_THEME_KEY, name);
+  
+  if (isDefaultTheme(name)) {
+    colors = DEFAULT_THEMES[name];
+  } else {
+    const theme = loadThemes().find((t) => t.name === name);
+    if (!theme) return;
+    colors = theme.colors;
+  }
+
+  for (const key in DEFAULT_COLORS) {
+    if (colors[key]) {
+      document.documentElement.style.setProperty(key, colors[key]);
+    }
+  }
+}
+
+document.getElementById("themeSelect").addEventListener("change", (e) => {
+  const name = e.target.value;
+  applyThemeByName(name);
+  openSettings(); // re-sync color inputs
+});
+
+// Add theme button handler
+document.getElementById("addThemeBtn").addEventListener("click", () => {
+  const name = prompt("Name for the new theme");
+  if (!name) return;
+
+  const styles = getComputedStyle(document.documentElement);
+  const colors = {};
+  for (const key in DEFAULT_COLORS) {
+    colors[key] = styles.getPropertyValue(key).trim();
+  }
+
+  // Load existing themes
+  const themes = JSON.parse(localStorage.getItem(THEMES_KEY) || "[]");
+
+  // Add new theme
+  themes.push({ name: name.trim(), colors });
+  localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
+
+  // Re-render dropdown
+  renderThemeSelect();
+
+  flashNotice(`Theme "${name.trim()}" added`);
+});
+
+document.getElementById("exportThemeBtn").addEventListener("click", () => {
+  const name = prompt("Theme name:");
+  if (!name) return;
+
+  const colors = {};
+  for (const key in DEFAULT_COLORS) {
+    colors[key] = getComputedStyle(document.documentElement)
+      .getPropertyValue(key)
+      .trim();
+  }
+
+  const data = {
+    name,
+    colors,
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name.replace(/\s+/g, "-")}-notabletheme.json`;
+  a.click();
+});
+
+document.getElementById("importThemeBtn").addEventListener("click", () => {
+  document.getElementById("importThemeFile").click();
+});
+
+document.getElementById("importThemeFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const imported = JSON.parse(reader.result);
+      if (!imported.name || !imported.colors) throw "Invalid theme file";
+
+      const themes = loadThemes();
+
+      // Prevent duplicate names
+      if (themes.some((t) => t.name === imported.name)) {
+        imported.name += " (imported)";
+      }
+
+      // Add imported theme
+      themes.push(imported);
+      saveThemes(themes);
+      renderThemeSelect();
+
+      // **Apply the imported theme**
+      applyThemeByName(imported.name, { clearLive: true });
+
+      // **Set as active theme in storage**
+      localStorage.setItem(ACTIVE_THEME_KEY, imported.name);
+
+      flashNotice(`Theme "${imported.name}" imported and applied`);
+    } catch {
+      alert("Invalid theme file");
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById("deleteThemeBtn").addEventListener("click", () => {
+  const select = document.getElementById("themeSelect");
+  const name = select.value;
+
+  if (isDefaultTheme(name)) {
+    alert("Default themes cannot be deleted");
+    return;
+  }
+
+  if (!confirm(`Delete theme "${name}"?`)) return;
+
+  const themes = loadThemes().filter((t) => t.name !== name);
+  saveThemes(themes);
+
+  localStorage.setItem(ACTIVE_THEME_KEY, "Default Dark");
+  applyThemeByName("Default Dark");
+
+  renderThemeSelect();
+  openSettings();
+});
+
+function getCurrentColors() {
+  const styles = getComputedStyle(document.documentElement);
+  const colors = {};
+  for (const key in DEFAULT_COLORS) {
+    colors[key] = styles.getPropertyValue(key).trim();
+  }
+  return colors;
+}
+
+document.getElementById("applyThemeBtn").addEventListener("click", () => {
+  const select = document.getElementById("themeSelect");
+  const selectedName = select.value;
+
+  // Block default themes
+  if (isDefaultTheme(selectedName)) {
+    alert("Default themes cannot be modified.");
+    return;
+  }
+
+  const themes = loadThemes();
+  const theme = themes.find((t) => t.name === selectedName);
+  if (!theme) {
+    alert("Theme not found.");
+    return;
+  }
+
+  // Apply current CSS colors to theme
+  theme.colors = getCurrentColors();
+  saveThemes(themes);
+
+  flashNotice(`Theme "${selectedName}" updated`);
+});
+
+document.getElementById("reapplyThemeBtn").addEventListener("click", () => {
+  const select = document.getElementById("themeSelect");
+  const selectedName = select.value;
+  if (!selectedName) return;
+
+  applyThemeByName(selectedName); // reapply the theme
+  openSettings(); // sync color pickers
+  flashNotice(`Theme "${selectedName}" reapplied`);
+});
+
+document.getElementById("themeSelect").addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+
+  const oldName = e.target.value;
+  if (isDefaultTheme(oldName)) return;
+
+  const newName = prompt("Rename theme:", oldName);
+  if (!newName || newName === oldName) return;
+
+  const themes = loadThemes();
+  const theme = themes.find((t) => t.name === oldName);
+  if (!theme) return;
+
+  theme.name = newName;
+  saveThemes(themes);
+  localStorage.setItem(ACTIVE_THEME_KEY, newName);
+
+  renderThemeSelect();
+});
 
 // Show the "New update available!" pill
 function showUpdatePill() {
@@ -684,192 +936,16 @@ function showUpdatePill() {
   controls.insertBefore(pill, controls.firstChild);
 }
 
-function loadThemes() {
-  const raw = localStorage.getItem(THEMES_KEY);
-  if (raw) return JSON.parse(raw);
-
-  localStorage.setItem(THEMES_KEY, JSON.stringify([DEFAULT_THEME]));
-  return [DEFAULT_THEME];
-}
-
-function saveThemes(themes) {
-  localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
-}
-
-function renderThemeSelect() {
-  const themes = loadThemes();
-  const select = document.getElementById("themeSelect");
-  const active = localStorage.getItem(ACTIVE_THEME_KEY) || DEFAULT_THEME_NAME;
-
-  select.innerHTML = "";
-
-  themes.forEach((theme) => {
-    const opt = document.createElement("option");
-    opt.value = theme.name;
-    opt.textContent = theme.name;
-    if (theme.name === active) opt.selected = true;
-    select.appendChild(opt);
-  });
-}
-
-function applyThemeByName(name) {
-  const themes = loadThemes();
-  const theme = themes.find((t) => t.name === name);
-  if (!theme) return;
-
-  for (const key in theme.colors) {
-    document.documentElement.style.setProperty(key, theme.colors[key]);
-  }
-
-  localStorage.setItem(ACTIVE_THEME_KEY, name);
-  saveThemeToStorage(); // your existing function
-}
-
-document.getElementById("themeSelect").addEventListener("change", (e) => {
-  applyThemeByName(e.target.value);
-  openSettings(); // re-sync color inputs
-});
-
-// Add theme button handler
-document.getElementById("addThemeBtn").addEventListener("click", () => {
-  const name = prompt("Name for the new theme");
-  if (!name) return;
-
-  const styles = getComputedStyle(document.documentElement);
-  const colors = {};
-  for (const key in DEFAULT_COLORS) {
-    colors[key] = styles.getPropertyValue(key).trim();
-  }
-
-  // Load existing themes
-  const themes = JSON.parse(localStorage.getItem(THEMES_KEY) || "[]");
-
-  // Add new theme
-  themes.push({ name: name.trim(), colors });
-  localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
-
-  // Re-render dropdown
-  renderThemeSelect();
-
-  flashNotice(`Theme "${name.trim()}" added`);
-});
-
-
-document.getElementById("exportThemeBtn").addEventListener("click", () => {
-  const name = prompt("Theme name:");
-  if (!name) return;
-
-  const colors = {};
-  for (const key in DEFAULT_THEME.colors) {
-    colors[key] = getComputedStyle(document.documentElement)
-      .getPropertyValue(key)
-      .trim();
-  }
-
-  const data = {
-    name,
-    colors,
-  };
-
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
-
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name.replace(/\s+/g, "-")}notabletheme.json`;
-  a.click();
-});
-
-document.getElementById("importThemeBtn").addEventListener("click", () => {
-  document.getElementById("importThemeFile").click();
-});
-
-document.getElementById("importThemeFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const imported = JSON.parse(reader.result);
-      if (!imported.name || !imported.colors) throw "Invalid theme file";
-
-      const themes = loadThemes();
-
-      if (themes.some((t) => t.name === imported.name)) {
-        imported.name += " (imported)";
-      }
-
-      themes.push(imported);
-      saveThemes(themes);
-      renderThemeSelect();
-    } catch {
-      alert("Invalid theme file");
-    }
-  };
-  reader.readAsText(file);
-});
-
-document.getElementById("deleteThemeBtn").addEventListener("click", () => {
-  const select = document.getElementById("themeSelect");
-  const name = select.value;
-
-  if (name === DEFAULT_THEME_NAME) {
-    alert("Default theme cannot be deleted");
-    return;
-  }
-
-  if (!confirm(`Delete theme "${name}"?`)) return;
-
-  const themes = loadThemes().filter((t) => t.name !== name);
-  saveThemes(themes);
-
-  localStorage.setItem(ACTIVE_THEME_KEY, DEFAULT_THEME_NAME);
-  applyThemeByName(
-    localStorage.getItem(ACTIVE_THEME_KEY) || DEFAULT_THEME_NAME
-  );
-
-  renderThemeSelect();
-  openSettings();
-});
-
-document.getElementById("themeSelect").addEventListener("contextmenu", (e) => {
-  e.preventDefault();
-
-  const oldName = e.target.value;
-  if (oldName === DEFAULT_THEME_NAME) return;
-
-  const newName = prompt("Rename theme:", oldName);
-  if (!newName || newName === oldName) return;
-
-  const themes = loadThemes();
-  const theme = themes.find((t) => t.name === oldName);
-  if (!theme) return;
-
-  theme.name = newName;
-  saveThemes(themes);
-  localStorage.setItem(ACTIVE_THEME_KEY, newName);
-
-  renderThemeSelect();
-});
-
-// --- RENDER ---
+// --- RENDER NOTES AND TABS ---
 function render() {
   ensureDefault();
   renderTabs();
   renderNoteArea();
-
-  const activeTheme =
-    localStorage.getItem(ACTIVE_THEME_KEY) || DEFAULT_THEME_NAME;
-
-  applyThemeByName(activeTheme);
-
-  renderThemeSelect();
 }
 loadState();
 ensureDefault();
 render();
+
 window.addEventListener("beforeunload", saveState);
 
 document.addEventListener("DOMContentLoaded", () => {

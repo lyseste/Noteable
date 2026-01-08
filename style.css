@@ -1,15 +1,14 @@
 /* Noteable stylesheet */
 
 :root {
-  --bg: #161616;
-  --app: #111725;
-  --panel: #111827;
-  --field: #0f172a;
-  --muted: #94a3b8;
-  --text: #e5e7eb;
-  --accent: #22c55e;
-  --accent-2: #60a5fa;
-  --border: #1f2937;
+  --bg: #0a0a0a;
+  --app: #141414;
+  --field: #1e1e1e;
+  --muted: #969696;
+  --text: #dcdcdc;
+  --accent: #5498ff;
+  --accent-2: #5498ff;
+  --border: #323232;
 }
 
 * {
@@ -25,11 +24,7 @@ body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter,
     Arial, sans-serif;
-  background: linear-gradient(
-    180deg,
-    var(--bg),
-    color-mix(in srgb, var(--bg) 50%, black)
-  );
+  background: var(--bg);
   color: var(--text);
   display: flex;
   align-items: flex-start;
@@ -435,9 +430,21 @@ dialog label {
 /* Buttons row */
 .dialog-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
   margin-top: 14px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.dialog-actions-left,
+.dialog-actions-right {
+  display: flex;
+  gap: 8px;
+}
+
+.dialog-actions-left {
+  margin-right: auto;
 }
 
 dialog button {

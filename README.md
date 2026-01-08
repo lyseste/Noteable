@@ -2,7 +2,7 @@
   <span>Noteable</span>
 </h1>
 <p align="center">
-  <span align="center">Noteable is a highly customizeable progressive web app to organize and quickly copy notes.</span>
+  <span align="center">Noteable is a more organized way to quickly copy notes. Keep track of your notes with multiple tabs, and customize the app to your liking.</span>
 </p>
 <h3 align="center">
   <a href="https://lyseste.github.io/Noteable">Open App</a>
@@ -20,8 +20,8 @@ Just [open the app](https://lyseste.github.io/Noteable) in your browser, and cli
 ## ✨ What's new
 ### Version 1.6 (January 2026)
 **Highlights**
-- Cleaned up app interface and moved Export and Import buttons to a new menu, with Settings and About dialogs
-- Added theme customization to settings which allows users to personalize the colors of their app
-- Save selected colors as theme, switch and manage themes, export, and import themes from file
+- Full customization of app colors are now available in the new settings menu
+- Create, manage, export, and import color themes
+- Default theme redesigned
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
