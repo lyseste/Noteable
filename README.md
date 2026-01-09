@@ -1,4 +1,5 @@
 <h1 align="center">
+  <img src="icons/icon512.png" alt="Noteable icon" height="26">
   <span>Noteable</span>
 </h1>
 <p align="center">
@@ -11,15 +12,30 @@
 </h3>
 <br/><br/>
 
-## 📋 Installation
+## Features
 
-Noteable runs directly in your browser, and can be installed locally as a Progressive Web App.
+- Organize notes between multiple tabs
+- Quickly copy notes with a single button click
+- Drag & drop to reorder tabs and notes
+- Search to filter notes within tabs
+- Export and import all your notes from JSON
+- Data is stored locally in your browser
+- Fully customize the colors of the app
+- Save color customization as themes, and export, or import themes from JSON
+- Run the app in the browser, or install as a PWA
+- ServiceWorker to provide support for running the app offline
+<br/><br/>
 
-Just [open the app](https://lyseste.github.io/Noteable) in your browser, and click install in the search bar to add the PWA to your toolbar.
+## Usage
 
-## ✨ What's new
+Noteable runs directly in your browser, and can be installed locally as a [Progressive Web App](https://github.com/topics/pwa).
+
+Just [open the app](https://lyseste.github.io/Noteable) in your browser, and click install in the search bar to install as a PWA.
+<br/><br/>
+
+## What's new
 ### Version 1.6 (January 2026)
-**Highlights**
+**✨ Highlights**
 - Full customization of app colors are now available in the new settings menu
 - Create, manage, export, and import color themes
 - Default theme redesigned
