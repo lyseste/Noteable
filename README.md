@@ -7,7 +7,7 @@
 </p>
 <h3 align="center">
   <a href="https://lyseste.github.io/Noteable">Open App</a>
-  <span> · </span>
+  <span> • </span>
   <a href="https://github.com/lyseste/Noteable/wiki/Version-History">Version History</a>
 </h3>
 <br/><br/>
@@ -41,3 +41,4 @@ Just [open the app](https://lyseste.github.io/Noteable) in your browser, and cli
 - Default theme redesigned
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
+
