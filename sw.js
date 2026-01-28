@@ -1,4 +1,4 @@
-const CACHE_VERSION = '260108.30';
+const CACHE_VERSION = '260128.1';
 const CACHE_NAME = `noteable-cache-${CACHE_VERSION}`;
 const FILES_TO_CACHE = [
   './',
