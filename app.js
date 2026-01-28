@@ -356,34 +356,33 @@ function renderNoteArea() {
         imgBorder.className = "image-border";
 
         const img = document.createElement("img");
+        img.className = "image-embed";
         img.src = field.value;
         img.draggable = false;
         img.alt = field.label || "Image";
 
-        // Hydration: apply saved width and height
         let wrapperWidth = field.width || 0;
         let wrapperHeight = field.height || 0;
 
+        let isHydrating = true;
+
         img.onload = () => {
-          const ratio = img.naturalWidth / img.naturalHeight;
-
-          if (!field.aspectRatio) {
-            field.aspectRatio = ratio;
-            saveState();
-          }
-
-          // Compute default size if not saved
           if (!wrapperWidth) wrapperWidth = img.naturalWidth;
-          if (!wrapperHeight) wrapperHeight = wrapperWidth / field.aspectRatio;
+          if (!wrapperHeight) wrapperHeight = img.naturalHeight;
 
           imgWrapper.style.width = wrapperWidth + "px";
           imgWrapper.style.height = wrapperHeight + "px";
           imgWrapper.style.maxWidth = "none";
 
-          // Store updated values in field
-          field.width = wrapperWidth;
-          field.height = wrapperHeight;
-          saveState();
+          if (!field.width || !field.height) {
+            field.width = wrapperWidth;
+            field.height = wrapperHeight;
+            saveState();
+          }
+
+          requestAnimationFrame(() => {
+            isHydrating = false;
+          });
         };
 
         imgBorder.appendChild(img);
@@ -394,7 +393,7 @@ function renderNoteArea() {
         let isCorrecting = false;
 
         const ro = new ResizeObserver(([entry]) => {
-          if (isCorrecting) return;
+          if (isHydrating || isCorrecting) return;
 
           const { width, height } = entry.contentRect;
           if (!width || !height) return;
@@ -581,11 +580,27 @@ addTextareaBtn.addEventListener("click", () => {
 clearTabBtn.addEventListener("click", () => {
   const tab = state.tabs.find((t) => t.id === state.activeTabId);
   if (!tab) return;
+
   if (!confirm('Clear all fields in tab "' + tab.name + '"?')) return;
-  tab.fields.forEach((f) => (f.value = ""));
+
+  // to implement in the future: choose whether images are cleared or not on clear tab
+  const deleteImages = false;
+
+  tab.fields = tab.fields.filter((f) => {
+    if (f.type === "image") return !deleteImages;
+    return true;
+  });
+
+  tab.fields.forEach((f) => {
+    if (f.type !== "image") {
+      f.value = "";
+    }
+  });
+
   saveState();
   renderNoteArea();
 });
+
 
 exportBtn.addEventListener("click", () => {
   try {
@@ -633,14 +648,7 @@ function handleImportFile(file) {
         state.tabs = imported.tabs.map((t) => ({
           id: uid("tab"),
           name: t.name || "Imported tab",
-          fields: Array.isArray(t.fields)
-            ? t.fields.map((f) => ({
-                id: uid("f"),
-                type: f.type === "textarea" ? "textarea" : "label",
-                label: f.label || "Text",
-                value: f.value || "",
-              }))
-            : [],
+          fields: Array.isArray(t.fields) ? t.fields.map(importField) : [],
         }));
         state.activeTabId = state.tabs.length ? state.tabs[0].id : null;
         saveState();
@@ -651,14 +659,7 @@ function handleImportFile(file) {
           const tab = {
             id: uid("tab"),
             name: t.name || "Imported tab",
-            fields: Array.isArray(t.fields)
-              ? t.fields.map((f) => ({
-                  id: uid("f"),
-                  type: f.type === "textarea" ? "textarea" : "label",
-                  label: f.label || "Text",
-                  value: f.value || "",
-                }))
-              : [],
+            fields: Array.isArray(t.fields) ? t.fields.map(importField) : [],
           };
           state.tabs.push(tab);
         });
@@ -676,6 +677,40 @@ function handleImportFile(file) {
     alert("Could not read file");
   };
   reader.readAsText(file);
+}
+
+function importField(f) {
+  if (f.type === "image") {
+    return {
+      id: uid("f"),
+      type: "image",
+      label: f.label || "Image",
+      value: f.value || "",
+      width: typeof f.width === "number" ? f.width : undefined,
+      height: typeof f.height === "number" ? f.height : undefined,
+    };
+  }
+
+  if (f.type === "image" && typeof f.value !== "string") {
+    console.warn("Skipping invalid image field", f);
+    return null;
+  }
+
+  if (f.type === "textarea") {
+    return {
+      id: uid("f"),
+      type: "textarea",
+      label: f.label || "Text",
+      value: f.value || "",
+    };
+  }
+
+  return {
+    id: uid("f"),
+    type: "label",
+    label: f.label || "Text",
+    value: f.value || "",
+  };
 }
 
 // --- SETTINGS DIALOG ---
