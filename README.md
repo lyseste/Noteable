@@ -3,7 +3,7 @@
   <span>Noteable</span>
 </h1>
 <p align="center">
-  <span align="center">Noteable is a more organized way to quickly copy notes. Keep track of your notes with multiple tabs, and customize the app to your liking.</span>
+  <span align="center">Notable lets you easily organize your notes within tabs, and quickly copy notes whenever you need them.</span>
 </p>
 <h3 align="center">
   <a href="https://lyseste.github.io/Noteable">Open App</a>
@@ -15,7 +15,8 @@
 ## Features
 
 - Organize notes between multiple tabs
-- Quickly copy notes with a single button click
+- Quickly copy notes with a single button-click
+- Paste images into your notes for quick reference
 - Drag & drop to reorder tabs and notes
 - Search to filter notes within tabs
 - Export and import all your notes from JSON
@@ -34,11 +35,12 @@ Just [open the app](https://lyseste.github.io/Noteable) in your browser, and cli
 <br/><br/>
 
 ## What's new
-### Version 1.6 (January 2026)
+### Version 1.7 (February 2026)
 **✨ Highlights**
-- Full customization of app colors are now available in the new settings menu
-- Create, manage, export, and import color themes
-- Default theme redesigned
+- You can now paste copied images and screenshots in your notes, creating a new image field automatically
+- Images can be resized, and the set size will be preserved in memory when you refresh, change tabs, or export and import backups
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
+
+
 

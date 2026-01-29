@@ -58,7 +58,7 @@ function getDefaultThemeNames() {
 }
 function ensureThemesInitialized() {
   if (!localStorage.getItem(THEMES_KEY)) {
-    localStorage.setItem(THEMES_KEY, JSON.stringify([])); // user themes only
+    localStorage.setItem(THEMES_KEY, JSON.stringify([]));
   }
 }
 function loadLiveColors() {
@@ -201,6 +201,38 @@ function renderTabs() {
   });
 }
 
+document.addEventListener("paste", (e) => {
+  const tab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!tab) return;
+
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      e.preventDefault(); // stop default paste
+
+      const file = item.getAsFile();
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        tab.fields.push({
+          id: uid("f"),
+          type: "image",
+          label: "Image",
+          value: reader.result,
+        });
+
+        saveState();
+        renderNoteArea();
+      };
+
+      reader.readAsDataURL(file);
+      return; // only handle first image
+    }
+  }
+});
+
 // --- Automatically resize textareas when switching between tabs
 function autoResize(el) {
   el.style.height = "auto"; // Reset first
@@ -219,14 +251,17 @@ function renderNoteArea() {
   const term = searchInput.value.toLowerCase();
 
   tab.fields
-    .filter(
-      (f) =>
-        f.label.toLowerCase().includes(term) ||
-        f.value.toLowerCase().includes(term)
-    )
+    .filter((f) => {
+      const labelMatch = f.label.toLowerCase().includes(term);
+      const valueMatch =
+        f.type !== "image" && f.value.toLowerCase().includes(term);
+      return labelMatch || valueMatch;
+    })
+
     .forEach((field) => {
       const container = document.createElement("div");
       container.className = "field";
+      container.dataset.id = field.id;
 
       // --- Label row ---
       const labelRow = document.createElement("div");
@@ -289,10 +324,11 @@ function renderNoteArea() {
       labelActions.appendChild(delBtn);
       labelRow.appendChild(labelActions);
 
-      // --- Input row + copy button ---
+      // --- Input row ---
       const inputRow = document.createElement("div");
       inputRow.className = "input-row";
       let inputEl;
+
       if (field.type === "label") {
         inputEl = document.createElement("input");
         inputEl.type = "text";
@@ -301,17 +337,81 @@ function renderNoteArea() {
           field.value = e.target.value;
           saveState();
         });
-      } else {
+        inputRow.appendChild(inputEl);
+      } else if (field.type === "textarea") {
         inputEl = document.createElement("textarea");
         inputEl.value = field.value || "";
         inputEl.addEventListener("input", (e) => {
           field.value = e.target.value;
-          autoResize(e.target); // Resize when typing
+          autoResize(e.target);
           saveState();
         });
-        autoResize(inputEl); // Resize when switching tab
+        autoResize(inputEl);
+        inputRow.appendChild(inputEl);
+      } else if (field.type === "image") {
+        const imgWrapper = document.createElement("div");
+        imgWrapper.className = "image-wrapper";
+
+        const imgBorder = document.createElement("div");
+        imgBorder.className = "image-border";
+
+        const img = document.createElement("img");
+        img.className = "image-embed";
+        img.src = field.value;
+        img.draggable = false;
+        img.alt = field.label || "Image";
+
+        let wrapperWidth = field.width || 0;
+        let wrapperHeight = field.height || 0;
+
+        let isHydrating = true;
+
+        img.onload = () => {
+          if (!wrapperWidth) wrapperWidth = img.naturalWidth;
+          if (!wrapperHeight) wrapperHeight = img.naturalHeight;
+
+          imgWrapper.style.width = wrapperWidth + "px";
+          imgWrapper.style.height = wrapperHeight + "px";
+          imgWrapper.style.maxWidth = "none";
+
+          if (!field.width || !field.height) {
+            field.width = wrapperWidth;
+            field.height = wrapperHeight;
+            saveState();
+          }
+
+          requestAnimationFrame(() => {
+            isHydrating = false;
+          });
+        };
+
+        imgBorder.appendChild(img);
+        imgWrapper.appendChild(imgBorder);
+        inputRow.appendChild(imgWrapper);
+
+        // Per-wrapper flags
+        let isCorrecting = false;
+
+        const ro = new ResizeObserver(([entry]) => {
+          if (isHydrating || isCorrecting) return;
+
+          const { width, height } = entry.contentRect;
+          if (!width || !height) return;
+
+          isCorrecting = true;
+
+          // Persist size
+          field.width = Math.round(imgWrapper.getBoundingClientRect().width);
+          field.height = Math.round(imgWrapper.getBoundingClientRect().height);
+          saveState();
+
+          requestAnimationFrame(() => {
+            isCorrecting = false;
+          });
+        });
+
+        ro.observe(imgWrapper);
       }
-      inputRow.appendChild(inputEl);
 
       const copyBtn = document.createElement("button");
       copyBtn.className = "copy-btn";
@@ -322,7 +422,9 @@ function renderNoteArea() {
           .writeText(field.value || "")
           .then(() => flashNotice("Copied!"));
       });
-      inputRow.appendChild(copyBtn);
+      if (field.type !== "image") {
+        inputRow.appendChild(copyBtn);
+      }
 
       container.appendChild(labelRow);
       container.appendChild(inputRow);
@@ -332,7 +434,7 @@ function renderNoteArea() {
   if (tab.fields.length === 0) {
     const p = document.createElement("p");
     p.className = "hint";
-    p.textContent = "This tab is empty — use the buttons to add fields.";
+    p.textContent = "This tab is empty.";
     noteArea.appendChild(p);
   }
 
@@ -348,7 +450,7 @@ function renderNoteArea() {
   if (tab.fields.length === 0) {
     const p = document.createElement("p");
     p.className = "hint";
-    p.textContent = "This tab is empty — use the buttons to add fields.";
+    p.textContent = "This tab is empty.";
     noteArea.appendChild(p);
   }
 
@@ -361,7 +463,7 @@ function renderNoteArea() {
 function getDragAfterElement(container, pos, vertical = true) {
   const draggableElements = [
     ...container.querySelectorAll(
-      vertical ? ".field:not(.dragging)" : "button.tab:not(.dragging)"
+      vertical ? ".field:not(.dragging)" : "button.tab:not(.dragging)",
     ),
   ];
   return draggableElements.reduce(
@@ -374,7 +476,7 @@ function getDragAfterElement(container, pos, vertical = true) {
         return { offset, element: child };
       else return closest;
     },
-    { offset: Number.NEGATIVE_INFINITY }
+    { offset: Number.NEGATIVE_INFINITY },
   ).element;
 }
 
@@ -382,15 +484,15 @@ function getDragAfterElement(container, pos, vertical = true) {
 function updateFieldOrder() {
   const tab = state.tabs.find((t) => t.id === state.activeTabId);
   if (!tab) return;
+
   const newFields = [];
+
   noteArea.querySelectorAll(".field").forEach((container) => {
-    const labelText = container.querySelector(".field-label").textContent;
-    const inputEl = container.querySelector("input,textarea");
-    const value = inputEl.value;
-    const type =
-      inputEl.tagName.toLowerCase() === "textarea" ? "textarea" : "label";
-    newFields.push({ id: uid("f"), label: labelText, type, value });
+    const id = container.dataset.id;
+    const field = tab.fields.find((f) => f.id === id);
+    if (field) newFields.push(field);
   });
+
   tab.fields = newFields;
   saveState();
 }
@@ -400,7 +502,7 @@ function updateTabOrder() {
   const newTabs = [];
   tabsEl.querySelectorAll("button.tab").forEach((btn) => {
     const t = state.tabs.find(
-      (x) => x.id === btn.title || x.name === btn.textContent
+      (x) => x.id === btn.title || x.name === btn.textContent,
     );
     if (t) newTabs.push(t);
   });
@@ -478,11 +580,27 @@ addTextareaBtn.addEventListener("click", () => {
 clearTabBtn.addEventListener("click", () => {
   const tab = state.tabs.find((t) => t.id === state.activeTabId);
   if (!tab) return;
+
   if (!confirm('Clear all fields in tab "' + tab.name + '"?')) return;
-  tab.fields.forEach((f) => (f.value = ""));
+
+  // to implement in the future: choose whether images are cleared or not on clear tab
+  const deleteImages = false;
+
+  tab.fields = tab.fields.filter((f) => {
+    if (f.type === "image") return !deleteImages;
+    return true;
+  });
+
+  tab.fields.forEach((f) => {
+    if (f.type !== "image") {
+      f.value = "";
+    }
+  });
+
   saveState();
   renderNoteArea();
 });
+
 
 exportBtn.addEventListener("click", () => {
   try {
@@ -524,20 +642,13 @@ function handleImportFile(file) {
       if (!imported || !Array.isArray(imported.tabs))
         throw new Error("Invalid format");
       const replace = confirm(
-        "Replace existing notes with file contents? (OK = Replace, Cancel = Merge)"
+        "Replace existing notes with file contents? (OK = Replace, Cancel = Merge)",
       );
       if (replace) {
         state.tabs = imported.tabs.map((t) => ({
           id: uid("tab"),
           name: t.name || "Imported tab",
-          fields: Array.isArray(t.fields)
-            ? t.fields.map((f) => ({
-                id: uid("f"),
-                type: f.type === "textarea" ? "textarea" : "label",
-                label: f.label || "Text",
-                value: f.value || "",
-              }))
-            : [],
+          fields: Array.isArray(t.fields) ? t.fields.map(importField) : [],
         }));
         state.activeTabId = state.tabs.length ? state.tabs[0].id : null;
         saveState();
@@ -548,14 +659,7 @@ function handleImportFile(file) {
           const tab = {
             id: uid("tab"),
             name: t.name || "Imported tab",
-            fields: Array.isArray(t.fields)
-              ? t.fields.map((f) => ({
-                  id: uid("f"),
-                  type: f.type === "textarea" ? "textarea" : "label",
-                  label: f.label || "Text",
-                  value: f.value || "",
-                }))
-              : [],
+            fields: Array.isArray(t.fields) ? t.fields.map(importField) : [],
           };
           state.tabs.push(tab);
         });
@@ -573,6 +677,40 @@ function handleImportFile(file) {
     alert("Could not read file");
   };
   reader.readAsText(file);
+}
+
+function importField(f) {
+  if (f.type === "image") {
+    return {
+      id: uid("f"),
+      type: "image",
+      label: f.label || "Image",
+      value: f.value || "",
+      width: typeof f.width === "number" ? f.width : undefined,
+      height: typeof f.height === "number" ? f.height : undefined,
+    };
+  }
+
+  if (f.type === "image" && typeof f.value !== "string") {
+    console.warn("Skipping invalid image field", f);
+    return null;
+  }
+
+  if (f.type === "textarea") {
+    return {
+      id: uid("f"),
+      type: "textarea",
+      label: f.label || "Text",
+      value: f.value || "",
+    };
+  }
+
+  return {
+    id: uid("f"),
+    type: "label",
+    label: f.label || "Text",
+    value: f.value || "",
+  };
 }
 
 // --- SETTINGS DIALOG ---
@@ -711,7 +849,7 @@ function applyThemeByName(name, options = { clearLive: true }) {
   }
 
   localStorage.setItem(ACTIVE_THEME_KEY, name);
-  
+
   if (isDefaultTheme(name)) {
     colors = DEFAULT_THEMES[name];
   } else {
