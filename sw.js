@@ -1,4 +1,4 @@
-const CACHE_VERSION = '260108.30';
+const CACHE_VERSION = '260108.31';
 const CACHE_NAME = `noteable-cache-${CACHE_VERSION}`;
 const FILES_TO_CACHE = [
   './',
@@ -49,4 +49,5 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+
 });
