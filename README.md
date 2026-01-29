@@ -37,8 +37,10 @@ Just [open the app](https://lyseste.github.io/Noteable) in your browser, and cli
 ## What's new
 ### Version 1.7 (February 2026)
 **✨ Highlights**
-- *Feature*
+- You can now paste copied images and screenshots in your notes, creating a new image field automatically
+- Images can be resized, and the set size will be preserved in memory when you refresh, change tabs, or export and import backups
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
+
 
 
