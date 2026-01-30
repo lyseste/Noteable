@@ -10,6 +10,7 @@ const addTabBtn = $("#addTabBtn");
 const addLabelBtn = $("#addLabelBtn");
 const addTextareaBtn = $("#addTextareaBtn");
 const clearTabBtn = $("#clearTabBtn");
+const addTemplateBtn = $("#addTemplateBtn");
 const exportBtn = $("#exportBtn");
 const importBtn = $("#importBtn");
 const importFile = $("#importFile");
@@ -103,7 +104,17 @@ document.addEventListener("click", () => {
   menuDropdown.classList.add("hidden");
 });
 
-let state = { tabs: [], activeTabId: null };
+const DEFAULT_SETTINGS = {
+  clearTabDeletesImages: false,
+  experimental: false,
+};
+
+let state = {
+  tabs: [],
+  activeTabId: null,
+  settings: { ...DEFAULT_SETTINGS },
+};
+
 const uid = (prefix = "id") =>
   prefix + "_" + Math.random().toString(36).slice(2, 9);
 
@@ -111,11 +122,21 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-    state = JSON.parse(raw);
+
+    const loaded = JSON.parse(raw);
+
+    state = {
+      ...loaded,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ...(loaded.settings || {}),
+      },
+    };
   } catch (e) {
     console.error("Failed load", e);
   }
 }
+
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -134,6 +155,20 @@ function ensureDefault() {
     state.tabs = [t];
     state.activeTabId = t.id;
     saveState();
+  }
+}
+function ensureSettings() {
+  if (!state.settings) {
+    state.settings = { ...DEFAULT_SETTINGS };
+    saveState();
+    return;
+  }
+
+  // Backward compatibility for older saves
+  for (const key in DEFAULT_SETTINGS) {
+    if (!(key in state.settings)) {
+      state.settings[key] = DEFAULT_SETTINGS[key];
+    }
   }
 }
 
@@ -411,6 +446,48 @@ function renderNoteArea() {
         });
 
         ro.observe(imgWrapper);
+      } else if (field.type === "template") {
+        const container = document.createElement("div");
+        container.style.display = "flex";
+        container.style.flexDirection = "column";
+        container.style.width = "100%";
+        container.style.gap = "4px";
+
+        const textarea = document.createElement("textarea");
+        textarea.placeholder = "Use $(FieldName) to input values...";
+        textarea.value = field.value || "";
+        textarea.style.width = "100%";
+
+        textarea.addEventListener("input", (e) => {
+          field.value = e.target.value;
+          autoResize(e.target);
+          saveState();
+        });
+        autoResize(textarea);
+
+        const runBtn = document.createElement("button");
+        runBtn.className = "copy-btn";
+        runBtn.textContent = "Run";
+
+        runBtn.addEventListener("click", () => {
+          const output = resolveTemplate(field.value, getAllFields());
+          navigator.clipboard
+            .writeText(output)
+            .then(() => flashNotice("Template copied!"));
+        });
+
+        const templateHelper = document.createElement("div");
+        templateHelper.className = "template-help";
+        templateHelper.innerHTML = `
+          Use <code>$(FieldName)</code> 
+          or with parameters like <code>$(Tab.FieldName|csv)</code><br>
+        `;
+
+        // append children in order
+        container.appendChild(textarea);
+        container.appendChild(templateHelper);
+        inputRow.appendChild(container);
+        inputRow.appendChild(runBtn);
       }
 
       const copyBtn = document.createElement("button");
@@ -422,7 +499,7 @@ function renderNoteArea() {
           .writeText(field.value || "")
           .then(() => flashNotice("Copied!"));
       });
-      if (field.type !== "image") {
+      if (field.type !== "image" && field.type !== "template") {
         inputRow.appendChild(copyBtn);
       }
 
@@ -583,24 +660,30 @@ clearTabBtn.addEventListener("click", () => {
 
   if (!confirm('Clear all fields in tab "' + tab.name + '"?')) return;
 
-  // to implement in the future: choose whether images are cleared or not on clear tab
-  const deleteImages = false;
-
-  tab.fields = tab.fields.filter((f) => {
-    if (f.type === "image") return !deleteImages;
-    return true;
+  tab.fields.forEach((f) => {
+    if (f.type !== "image") f.value = "";
   });
 
-  tab.fields.forEach((f) => {
-    if (f.type !== "image") {
-      f.value = "";
-    }
+  if (state.settings.clearTabDeletesImages) {
+    tab.fields = tab.fields.filter((f) => f.type !== "image");
+  }
+  saveState();
+  renderNoteArea();
+});
+addTemplateBtn.addEventListener("click", () => {
+  const tab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!tab) return;
+
+  tab.fields.push({
+    id: uid("f"),
+    type: "template",
+    label: "Template",
+    value: "",
   });
 
   saveState();
   renderNoteArea();
 });
-
 
 exportBtn.addEventListener("click", () => {
   try {
@@ -653,7 +736,7 @@ function handleImportFile(file) {
         state.activeTabId = state.tabs.length ? state.tabs[0].id : null;
         saveState();
         render();
-        flashNotice("Import completed — replaced existing");
+        flashNotice("Import completed: Replaced existing");
       } else {
         imported.tabs.forEach((t) => {
           const tab = {
@@ -667,7 +750,7 @@ function handleImportFile(file) {
           state.activeTabId = state.tabs[0].id;
         saveState();
         render();
-        flashNotice("Import completed — merged");
+        flashNotice("Import completed: Merged");
       }
     } catch (err) {
       alert("Import error: " + err.message);
@@ -713,8 +796,97 @@ function importField(f) {
   };
 }
 
+function getAllFields() {
+  return state.tabs.flatMap((t) => t.fields);
+}
+
+// --- TEMPLATE RESOLVERS ---
+function resolveTemplate(template, fields) {
+  return template.replace(/\$\((.*?)\)/g, (_, expr) => {
+    return resolvePlaceholder(expr, fields);
+  });
+}
+function resolvePlaceholder(expr, fields) {
+  let tabName = null;
+  let keyAndParam = expr;
+
+  // Tab-qualified reference: Tab.Field|param
+  if (expr.includes(".")) {
+    const parts = expr.split(".");
+    tabName = parts.shift();
+    keyAndParam = parts.join(".");
+  }
+
+  const [key, param] = keyAndParam.split("|");
+
+  const field = fields.find((f) => {
+    if (tabName) {
+      const parentTab = state.tabs.find((t) => t.fields.includes(f));
+      if (!parentTab || parentTab.name !== tabName) return false;
+    }
+    return f.label === key || f.id === key;
+  });
+
+  if (!field || typeof field.value !== "string") return "";
+
+  const lines = field.value.split(/\r?\n/);
+
+  if (!param) return field.value;
+
+  if (/^\d+$/.test(param)) {
+    return lines[parseInt(param, 10) - 1] ?? "";
+  }
+
+  switch (param.toLowerCase()) {
+    case "csv":
+      return lines
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(",");
+    case "lines":
+      return field.value
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .join("\n");
+    default:
+      return field.value;
+  }
+}
+
 // --- SETTINGS DIALOG ---
 const settingsDialog = document.getElementById("settingsDialog");
+
+const experimentalToggle = document.getElementById("experimentalToggle");
+const clearImageToggle = document.getElementById("clearImageToggle");
+
+experimentalToggle.checked = state.settings.experimental;
+clearImageToggle.checked = state.settings.clearTabDeletesImages;
+
+experimentalToggle.addEventListener("change", () => {
+  state.settings.experimental = experimentalToggle.checked;
+  saveState();
+  syncExperimentalUI();
+});
+
+clearImageToggle.addEventListener("change", () => {
+  state.settings.clearTabDeletesImages = clearImageToggle.checked;
+  saveState();
+});
+
+function syncSettingsUI() {
+  experimentalToggle.checked = !!state.settings.experimental;
+  clearImageToggle.checked = !!state.settings.clearTabDeletesImages;
+  syncExperimentalUI();
+}
+
+function syncExperimentalUI() {
+  if (state.settings.experimental) {
+    addTemplateBtn.classList.remove("hidden");
+  } else {
+    addTemplateBtn.classList.add("hidden");
+  }
+}
 
 document.getElementById("settingsBtn").addEventListener("click", () => {
   settingsDialog.showModal();
@@ -1081,8 +1253,10 @@ function render() {
   renderNoteArea();
 }
 loadState();
+ensureSettings();
 ensureDefault();
 render();
+syncSettingsUI();
 
 window.addEventListener("beforeunload", saveState);
 

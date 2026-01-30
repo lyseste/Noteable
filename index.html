@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -8,7 +8,7 @@
     <link rel="icon" type="image/x-icon" href="./icon512.png" />
     <script src="./app.js" defer></script>
     <meta name="theme-color" content="#0a0a0a" />
-    <meta name="app-version" content="1.7.0" />
+    <meta name="app-version" content="1.7.1" />
     <title>Noteable</title>
   </head>
 
@@ -57,9 +57,8 @@
         <div class="button-row">
           <div class="main-buttons">
             <button id="addLabelBtn" class="ghost small">Add text field</button>
-            <button id="addTextareaBtn" class="ghost small">
-              Add note field
-            </button>
+            <button id="addTextareaBtn" class="ghost small">Add note field</button>
+            <button id="addTemplateBtn" class="ghost small hidden">Add template</button>
             <button id="clearTabBtn" class="ghost small">Clear tab</button>
           </div>
           <div class="json-buttons">
@@ -106,13 +105,28 @@
           </button>
         </div>
         <div class="theme-actions">
-          <button id="exportThemeBtn" title="Export current colors to JSON" type="button" class="ghost small">
+          <button
+            id="exportThemeBtn"
+            title="Export current colors to JSON"
+            type="button"
+            class="ghost small"
+          >
             Export theme
           </button>
-          <button id="importThemeBtn" title="Import theme from JSON" type="button" class="ghost small">
+          <button
+            id="importThemeBtn"
+            title="Import theme from JSON"
+            type="button"
+            class="ghost small"
+          >
             Import theme
           </button>
-          <button id="reapplyThemeBtn" title="Reapply current theme" type="button" class="ghost small">
+          <button
+            id="reapplyThemeBtn"
+            title="Reapply current theme"
+            type="button"
+            class="ghost small"
+          >
             Reapply theme
           </button>
           <input
@@ -192,9 +206,26 @@
           <div class="dialog-actions-left">
             <button id="addThemeBtn">Create new theme</button>
             <button id="applyThemeBtn">Apply to current theme</button>
-          </div>
-          <div class="dialog-actions-right">
             <button id="resetColorsBtn">Reset to default</button>
+          </div>
+        </div>
+
+        <p><strong>Options</strong></p>
+        <div class="dialog-options">
+          <label class="toggle">
+            <span class="toggle-label">Enable experimental features</span>
+            <input type="checkbox" id="experimentalToggle" />
+            <span class="slider"></span>
+          </label>
+          <label class="toggle">
+            <span class="toggle-label">Clear tab deletes images</span>
+            <input type="checkbox" id="clearImageToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <div class="dialog-actions-right">
             <button onclick="settingsDialog.close()">Close</button>
           </div>
         </div>
@@ -223,4 +254,3 @@
     </div>
   </body>
 </html>
-

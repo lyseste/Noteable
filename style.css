@@ -247,6 +247,7 @@ textarea {
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  min-width: 65px;
 }
 
 .copy-btn:hover {
@@ -577,4 +578,73 @@ dialog[open] {
     transparent 55%,
     rgba(160, 160, 160, 0.5) 45%
   );
+}
+
+.dialog-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toggle {
+  display: flex;
+  align-items: left;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input {
+  display: none;
+}
+
+.toggle .slider {
+  width: 42px;
+  height: 22px;
+  background: #555;
+  border-radius: 999px;
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.toggle .slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  top: 2px;
+  left: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.toggle input:checked + .slider {
+  background: var(--accent, #4caf50);
+}
+
+.toggle input:checked + .slider::before {
+  transform: translateX(20px);
+}
+
+.toggle-label {
+  font-size: 14px;
+}
+
+.template-help {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted-text, #888);
+  line-height: 1.4;
+}
+
+.template-help code {
+  font-family: monospace;
+  background: var(--field);
+  padding: 2px 5px;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--field) 90%, white);
+  font-size: 11px;
 }
