@@ -247,6 +247,7 @@ textarea {
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  min-width: 65px;
 }
 
 .copy-btn:hover {
@@ -628,4 +629,22 @@ dialog[open] {
 
 .toggle-label {
   font-size: 14px;
+}
+
+.template-help {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted-text, #888);
+  line-height: 1.4;
+}
+
+.template-help code {
+  font-family: monospace;
+  background: var(--field);
+  padding: 2px 5px;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--field) 90%, white);
+  font-size: 11px;
 }
