@@ -33,6 +33,8 @@
 Noteable runs directly in your browser, and can be installed locally as a [Progressive Web App](https://github.com/topics/pwa).
 
 Just [open the app](https://lyseste.github.io/Noteable) in your browser, and click install in the search bar to install as a PWA.
+
+If you want to host the app locally, you can download the source and serve via a localhost HTTP/HTTPS server.
 <br/><br/>
 
 ## What's new
@@ -43,6 +45,7 @@ Just [open the app](https://lyseste.github.io/Noteable) in your browser, and cli
 - Templated fields allows you to create a template with input from other fields, and format the input using parameters (experimental)
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
+
 
 
 
