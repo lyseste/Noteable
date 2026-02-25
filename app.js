@@ -833,10 +833,21 @@ function resolvePlaceholder(expr, fields) {
 
   if (!param) return field.value;
 
+  // line number parameter
   if (/^\d+$/.test(param)) {
     return lines[parseInt(param, 10) - 1] ?? "";
   }
 
+  // custom delimiter parameter
+  if (param.toLowerCase().startsWith("join:")) {
+    const delimiter = param.slice(5);
+    return lines
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(delimiter);
+  }
+
+  // preset formatting parameters
   switch (param.toLowerCase()) {
     case "csv":
       return lines
