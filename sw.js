@@ -1,4 +1,4 @@
-const CACHE_VERSION = '1.7.2-260226';
+const CACHE_VERSION = '1.7.3-260302';
 const CACHE_NAME = `noteable-cache-${CACHE_VERSION}`;
 const FILES_TO_CACHE = [
   './',
@@ -51,5 +51,6 @@ self.addEventListener('message', (event) => {
   }
 
 });
+
 
 

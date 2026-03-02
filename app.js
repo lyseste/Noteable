@@ -448,8 +448,6 @@ function renderNoteArea() {
         ro.observe(imgWrapper);
       } else if (field.type === "template") {
         const container = document.createElement("div");
-        container.style.display = "flex";
-        container.style.flexDirection = "column";
         container.style.width = "100%";
         container.style.gap = "4px";
 
@@ -478,10 +476,7 @@ function renderNoteArea() {
 
         const templateHelper = document.createElement("div");
         templateHelper.className = "template-help";
-        templateHelper.innerHTML = `
-          Use <code>$(FieldName)</code> 
-          or with parameters like <code>$(Tab.FieldName|csv)</code><br>
-        `;
+        templateHelper.innerHTML = `<a class="btn ghost" title="Using template fields" href="https://github.com/lyseste/Noteable/wiki#using-template-fields" target="_blank">?</a>`;
 
         // append children in order
         container.appendChild(textarea);
@@ -838,13 +833,22 @@ function resolvePlaceholder(expr, fields) {
     return lines[parseInt(param, 10) - 1] ?? "";
   }
 
-  // custom delimiter parameter
+  // join with custom delimiter parameter
   if (param.toLowerCase().startsWith("join:")) {
     const delimiter = param.slice(5);
     return lines
       .map((l) => l.trim())
       .filter(Boolean)
       .join(delimiter);
+  }
+  // split with custom delimiter
+    if (param.toLowerCase().startsWith("split:")) {
+    const delimiter = param.slice(6);
+    return field.value
+      .split(delimiter)
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join("\n");
   }
 
   // preset formatting parameters

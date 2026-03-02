@@ -58,6 +58,15 @@ header h1 {
   font-weight: 700;
 }
 
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
 .controls {
   display: flex;
   gap: 8px;
@@ -461,16 +470,6 @@ dialog button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* Links in About */
-dialog a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-dialog a:hover {
-  text-decoration: underline;
-}
-
 dialog[open] {
   animation: dialogFadeIn 0.15s ease-out;
 }
@@ -631,20 +630,15 @@ dialog[open] {
   font-size: 14px;
 }
 
-.template-help {
-  margin-top: 4px;
+.template-help a {
+  line-height: 1;
   font-size: 12px;
-  color: var(--muted-text, #888);
-  line-height: 1.4;
+  padding: 2.5px 8px;
+  border-radius: 8px;
+  color: var(--muted);
 }
 
-.template-help code {
-  font-family: monospace;
-  background: var(--field);
-  padding: 2px 5px;
-  border-radius: 4px;
-  border-style: solid;
-  border-width: 1px;
-  border-color: color-mix(in srgb, var(--field) 90%, white);
-  font-size: 11px;
+.template-help a:hover {
+  text-decoration: none;
+  color: var(--accent);
 }

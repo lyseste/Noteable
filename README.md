@@ -42,11 +42,6 @@ If you want to host the app locally, you can download the source and serve via a
 **✨ Highlights**
 - You can now paste copied images and screenshots in your notes, creating a new image field automatically
 - Images can be resized, and the set size will be preserved in memory when you refresh, change tabs, or export and import backups
-- Templated fields allows you to create a template with input from other fields, and format the input using parameters (experimental)
+- Template fields allows you to create a template with input from other fields, and format the input using parameters (experimental feature)
 
 [See full version history here.](https://github.com/lyseste/Noteable/wiki/Version-History)
-
-
-
-
-
