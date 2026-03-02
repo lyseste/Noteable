@@ -1,1306 +1,1136 @@
-// Noteable application logic
-// Keep this file loaded with <script src="./app.js" defer></script>
+let boards = JSON.parse(localStorage.getItem("jeopardyBoards") || "{}");
+let currentBoard = null;
+let currentQuestion = null;
+let editingMedia = [];
+let teams = [];
+let mediaDB;
 
-const STORAGE_KEY = "notebook.v1";
+const boardSelect = document.getElementById("boardSelect");
+const mainMenu = document.getElementById("mainMenu");
+const editor = document.getElementById("editor");
+const playMode = document.getElementById("playMode");
+const questionModal = document.getElementById("questionModal");
+const scoreboard = document.getElementById("scoreboard");
 
-const $ = (s) => document.querySelector(s);
-const tabsEl = $("#tabs");
-const noteArea = $("#noteArea");
-const addTabBtn = $("#addTabBtn");
-const addLabelBtn = $("#addLabelBtn");
-const addTextareaBtn = $("#addTextareaBtn");
-const clearTabBtn = $("#clearTabBtn");
-const addTemplateBtn = $("#addTemplateBtn");
-const exportBtn = $("#exportBtn");
-const importBtn = $("#importBtn");
-const importFile = $("#importFile");
-const searchInput = document.createElement("input");
-
-const THEMES_KEY = "noteable.themes";
-const ACTIVE_THEME_KEY = "noteable.activeTheme";
-const LIVE_COLORS_KEY = "noteable.liveColors";
-const DEFAULT_COLORS = {
-  "--bg": "#0a0a0a",
-  "--app": "#141414",
-  "--field": "#1e1e1e",
-  "--muted": "#969696",
-  "--text": "#dcdcdc",
-  "--accent": "#5498ff",
-  "--accent-2": "#5498ff",
-  "--border": "#323232",
-};
-const DEFAULT_THEMES = {
-  "Default Dark": {
-    "--bg": "#0a0a0a",
-    "--app": "#141414",
-    "--field": "#1e1e1e",
-    "--muted": "#969696",
-    "--text": "#dcdcdc",
-    "--accent": "#5498ff",
-    "--accent-2": "#5498ff",
-    "--border": "#323232",
-  },
-  "Default Light": {
-    "--bg": "#0a0a0a",
-    "--app": "#ffffff",
-    "--field": "#e5e7eb",
-    "--muted": "#475569",
-    "--text": "#0f172a",
-    "--accent": "#5498ff",
-    "--accent-2": "#5498ff",
-    "--border": "#cbd5e1",
-  },
-};
-function isDefaultTheme(name) {
-  return name in DEFAULT_THEMES;
-}
-function getDefaultThemeNames() {
-  return Object.keys(DEFAULT_THEMES);
-}
-function ensureThemesInitialized() {
-  if (!localStorage.getItem(THEMES_KEY)) {
-    localStorage.setItem(THEMES_KEY, JSON.stringify([]));
-  }
-}
-function loadLiveColors() {
-  const raw = localStorage.getItem(LIVE_COLORS_KEY);
-  if (!raw) return false;
-
-  try {
-    const colors = JSON.parse(raw);
-    for (const key in colors) {
-      document.documentElement.style.setProperty(key, colors[key]);
-    }
-    return true;
-  } catch {
-    return false;
-  }
+function saveLocal() {
+  localStorage.setItem("jeopardyBoards", JSON.stringify(boards));
 }
 
-ensureThemesInitialized();
-
-const liveRestored = loadLiveColors();
-if (!liveRestored) {
-  const active = localStorage.getItem(ACTIVE_THEME_KEY) || "Default Dark";
-  applyThemeByName(active, { clearLive: false });
-}
-
-searchInput.type = "text";
-searchInput.placeholder = "Search fields in this tab...";
-searchInput.style.marginBottom = "8px";
-searchInput.style.width = "100%";
-searchInput.addEventListener("input", renderNoteArea);
-noteArea.parentNode.insertBefore(searchInput, noteArea);
-
-const menuBtn = document.getElementById("menuBtn");
-const menuDropdown = document.getElementById("menuDropdown");
-
-menuBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  menuDropdown.classList.toggle("hidden");
-});
-
-document.addEventListener("click", () => {
-  menuDropdown.classList.add("hidden");
-});
-
-const DEFAULT_SETTINGS = {
-  clearTabDeletesImages: false,
-  experimental: false,
-};
-
-let state = {
-  tabs: [],
-  activeTabId: null,
-  settings: { ...DEFAULT_SETTINGS },
-};
-
-const uid = (prefix = "id") =>
-  prefix + "_" + Math.random().toString(36).slice(2, 9);
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-
-    const loaded = JSON.parse(raw);
-
-    state = {
-      ...loaded,
-      settings: {
-        ...DEFAULT_SETTINGS,
-        ...(loaded.settings || {}),
-      },
-    };
-  } catch (e) {
-    console.error("Failed load", e);
-  }
-}
-
-function saveState() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.error("Failed save", e);
-  }
-}
-
-function ensureDefault() {
-  if (!state.tabs || state.tabs.length === 0) {
-    const t = {
-      id: uid("tab"),
-      name: "Tab 1",
-      fields: [{ id: uid("f"), type: "label", label: "Title", value: "" }],
-    };
-    state.tabs = [t];
-    state.activeTabId = t.id;
-    saveState();
-  }
-}
-function ensureSettings() {
-  if (!state.settings) {
-    state.settings = { ...DEFAULT_SETTINGS };
-    saveState();
-    return;
-  }
-
-  // Backward compatibility for older saves
-  for (const key in DEFAULT_SETTINGS) {
-    if (!(key in state.settings)) {
-      state.settings[key] = DEFAULT_SETTINGS[key];
-    }
-  }
-}
-
-// --- TAB RENDERING WITH DRAG ---
-function renderTabs() {
-  tabsEl.innerHTML = "";
-  state.tabs.forEach((t) => {
-    const btn = document.createElement("button");
-    btn.className = "tab" + (t.id === state.activeTabId ? " active" : "");
-    btn.type = "button";
-    btn.title = t.name;
-    btn.textContent = t.name;
-
-    // Click to switch
-    btn.addEventListener("click", () => {
-      state.activeTabId = t.id;
-      saveState();
-      render();
-    });
-
-    // Rename on contextmenu
-    btn.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const newName = prompt("Rename tab", t.name);
-      if (newName === null) return;
-      const trimmed = newName.trim();
-      if (trimmed.length === 0) return alert("Name cannot be empty");
-      t.name = trimmed;
-      saveState();
-      render();
-    });
-
-    // Delete on dblclick
-    btn.addEventListener("dblclick", () => {
-      if (!confirm('Delete tab "' + t.name + '"?')) return;
-      state.tabs = state.tabs.filter((x) => x.id !== t.id);
-      if (state.tabs.length === 0) {
-        state.activeTabId = null;
-        ensureDefault();
-      }
-      if (state.activeTabId === t.id) state.activeTabId = state.tabs[0].id;
-      saveState();
-      render();
-    });
-
-    // Drag start
-    btn.draggable = true;
-    btn.addEventListener("dragstart", (e) => {
-      btn.classList.add("dragging");
-      e.dataTransfer.setData("text/plain", t.id);
-    });
-    btn.addEventListener("dragend", () => btn.classList.remove("dragging"));
-
-    tabsEl.appendChild(btn);
-  });
-
-  // Tab drag over
-  tabsEl.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    const dragging = tabsEl.querySelector(".tab.dragging");
-    const afterEl = getDragAfterElement(tabsEl, e.clientX, false);
-    if (!afterEl) tabsEl.appendChild(dragging);
-    else tabsEl.insertBefore(dragging, afterEl);
-    updateTabOrder();
-  });
-}
-
-document.addEventListener("paste", (e) => {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) return;
-
-  const items = e.clipboardData?.items;
-  if (!items) return;
-
-  for (const item of items) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault(); // stop default paste
-
-      const file = item.getAsFile();
-      const reader = new FileReader();
-
-      reader.onload = () => {
-        tab.fields.push({
-          id: uid("f"),
-          type: "image",
-          label: "Image",
-          value: reader.result,
-        });
-
-        saveState();
-        renderNoteArea();
-      };
-
-      reader.readAsDataURL(file);
-      return; // only handle first image
-    }
-  }
-});
-
-// --- Automatically resize textareas when switching between tabs
-function autoResize(el) {
-  el.style.height = "auto"; // Reset first
-  el.style.height = el.scrollHeight + 2 + "px"; // Adjust to fit content
-}
-
-// --- FIELD RENDERING WITH SEARCH AND DRAG HANDLE ---
-function renderNoteArea() {
-  noteArea.innerHTML = "";
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) {
-    noteArea.textContent = "No tab selected";
-    return;
-  }
-
-  const term = searchInput.value.toLowerCase();
-
-  tab.fields
-    .filter((f) => {
-      const labelMatch = f.label.toLowerCase().includes(term);
-      const valueMatch =
-        f.type !== "image" && f.value.toLowerCase().includes(term);
-      return labelMatch || valueMatch;
-    })
-
-    .forEach((field) => {
-      const container = document.createElement("div");
-      container.className = "field";
-      container.dataset.id = field.id;
-
-      // --- Label row ---
-      const labelRow = document.createElement("div");
-      labelRow.className = "label-row";
-
-      const label = document.createElement("h4");
-      label.className = "field-label draggable-label";
-      label.textContent =
-        field.label || (field.type === "textarea" ? "Note" : "Text");
-      label.draggable = true;
-
-      // Drag start
-      label.addEventListener("dragstart", (e) => {
-        container.classList.add("dragging");
-      });
-
-      // Drag end
-      label.addEventListener("dragend", (e) => {
-        container.classList.remove("dragging");
-        updateFieldOrder(); // Update state after drop
-      });
-
-      labelRow.appendChild(label);
-
-      // --- Edit/Delete buttons ---
-      const labelActions = document.createElement("div");
-      labelActions.className = "label-actions";
-
-      // Edit button (inline SVG)
-      const renameBtn = document.createElement("button");
-      renameBtn.className = "icon-btn";
-      renameBtn.title = "Rename field";
-      renameBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M3 17.25V21h3.75l11-11.02-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/>
-      </svg>`;
-      renameBtn.addEventListener("click", () => {
-        const name = prompt("Rename field label", field.label || "");
-        if (name !== null) {
-          field.label = name.trim();
-          saveState();
-          renderNoteArea();
-        }
-      });
-
-      // Delete button (inline SVG)
-      const delBtn = document.createElement("button");
-      delBtn.className = "icon-btn";
-      delBtn.title = "Delete field";
-      delBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
-      </svg>`;
-      delBtn.addEventListener("click", () => {
-        if (!confirm("Delete this field?")) return;
-        tab.fields = tab.fields.filter((f) => f.id !== field.id);
-        saveState();
-        renderNoteArea();
-      });
-
-      labelActions.appendChild(renameBtn);
-      labelActions.appendChild(delBtn);
-      labelRow.appendChild(labelActions);
-
-      // --- Input row ---
-      const inputRow = document.createElement("div");
-      inputRow.className = "input-row";
-      let inputEl;
-
-      if (field.type === "label") {
-        inputEl = document.createElement("input");
-        inputEl.type = "text";
-        inputEl.value = field.value || "";
-        inputEl.addEventListener("input", (e) => {
-          field.value = e.target.value;
-          saveState();
-        });
-        inputRow.appendChild(inputEl);
-      } else if (field.type === "textarea") {
-        inputEl = document.createElement("textarea");
-        inputEl.value = field.value || "";
-        inputEl.addEventListener("input", (e) => {
-          field.value = e.target.value;
-          autoResize(e.target);
-          saveState();
-        });
-        autoResize(inputEl);
-        inputRow.appendChild(inputEl);
-      } else if (field.type === "image") {
-        const imgWrapper = document.createElement("div");
-        imgWrapper.className = "image-wrapper";
-
-        const imgBorder = document.createElement("div");
-        imgBorder.className = "image-border";
-
-        const img = document.createElement("img");
-        img.className = "image-embed";
-        img.src = field.value;
-        img.draggable = false;
-        img.alt = field.label || "Image";
-
-        let wrapperWidth = field.width || 0;
-        let wrapperHeight = field.height || 0;
-
-        let isHydrating = true;
-
-        img.onload = () => {
-          if (!wrapperWidth) wrapperWidth = img.naturalWidth;
-          if (!wrapperHeight) wrapperHeight = img.naturalHeight;
-
-          imgWrapper.style.width = wrapperWidth + "px";
-          imgWrapper.style.height = wrapperHeight + "px";
-          imgWrapper.style.maxWidth = "none";
-
-          if (!field.width || !field.height) {
-            field.width = wrapperWidth;
-            field.height = wrapperHeight;
-            saveState();
-          }
-
-          requestAnimationFrame(() => {
-            isHydrating = false;
-          });
-        };
-
-        imgBorder.appendChild(img);
-        imgWrapper.appendChild(imgBorder);
-        inputRow.appendChild(imgWrapper);
-
-        // Per-wrapper flags
-        let isCorrecting = false;
-
-        const ro = new ResizeObserver(([entry]) => {
-          if (isHydrating || isCorrecting) return;
-
-          const { width, height } = entry.contentRect;
-          if (!width || !height) return;
-
-          isCorrecting = true;
-
-          // Persist size
-          field.width = Math.round(imgWrapper.getBoundingClientRect().width);
-          field.height = Math.round(imgWrapper.getBoundingClientRect().height);
-          saveState();
-
-          requestAnimationFrame(() => {
-            isCorrecting = false;
-          });
-        });
-
-        ro.observe(imgWrapper);
-      } else if (field.type === "template") {
-        const container = document.createElement("div");
-        container.style.display = "flex";
-        container.style.flexDirection = "column";
-        container.style.width = "100%";
-        container.style.gap = "4px";
-
-        const textarea = document.createElement("textarea");
-        textarea.placeholder = "Use $(FieldName) to input values...";
-        textarea.value = field.value || "";
-        textarea.style.width = "100%";
-
-        textarea.addEventListener("input", (e) => {
-          field.value = e.target.value;
-          autoResize(e.target);
-          saveState();
-        });
-        autoResize(textarea);
-
-        const runBtn = document.createElement("button");
-        runBtn.className = "copy-btn";
-        runBtn.textContent = "Run";
-
-        runBtn.addEventListener("click", () => {
-          const output = resolveTemplate(field.value, getAllFields());
-          navigator.clipboard
-            .writeText(output)
-            .then(() => flashNotice("Template copied!"));
-        });
-
-        const templateHelper = document.createElement("div");
-        templateHelper.className = "template-help";
-        templateHelper.innerHTML = `
-          Use <code>$(FieldName)</code> 
-          or with parameters like <code>$(Tab.FieldName|csv)</code><br>
-        `;
-
-        // append children in order
-        container.appendChild(textarea);
-        container.appendChild(templateHelper);
-        inputRow.appendChild(container);
-        inputRow.appendChild(runBtn);
-      }
-
-      const copyBtn = document.createElement("button");
-      copyBtn.className = "copy-btn";
-      copyBtn.type = "button";
-      copyBtn.textContent = "Copy";
-      copyBtn.addEventListener("click", () => {
-        navigator.clipboard
-          .writeText(field.value || "")
-          .then(() => flashNotice("Copied!"));
-      });
-      if (field.type !== "image" && field.type !== "template") {
-        inputRow.appendChild(copyBtn);
-      }
-
-      container.appendChild(labelRow);
-      container.appendChild(inputRow);
-      noteArea.appendChild(container);
-    });
-
-  if (tab.fields.length === 0) {
-    const p = document.createElement("p");
-    p.className = "hint";
-    p.textContent = "This tab is empty.";
-    noteArea.appendChild(p);
-  }
-
-  // --- Drag-and-drop for fields ---
-  noteArea.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    const dragging = noteArea.querySelector(".field.dragging");
-    if (!dragging) return;
-    const afterEl = getDragAfterElement(noteArea, e.clientY, true);
-    if (!afterEl) noteArea.appendChild(dragging);
-    else noteArea.insertBefore(dragging, afterEl);
-  });
-  if (tab.fields.length === 0) {
-    const p = document.createElement("p");
-    p.className = "hint";
-    p.textContent = "This tab is empty.";
-    noteArea.appendChild(p);
-  }
-
-  requestAnimationFrame(() => {
-    noteArea.querySelectorAll("textarea").forEach(autoResize);
-  });
-}
-
-// --- HELPER FOR DRAG POSITION ---
-function getDragAfterElement(container, pos, vertical = true) {
-  const draggableElements = [
-    ...container.querySelectorAll(
-      vertical ? ".field:not(.dragging)" : "button.tab:not(.dragging)",
-    ),
-  ];
-  return draggableElements.reduce(
-    (closest, child) => {
-      const box = child.getBoundingClientRect();
-      const offset = vertical
-        ? pos - (box.top + box.height / 2)
-        : pos - (box.left + box.width / 2);
-      if (offset < 0 && offset > closest.offset)
-        return { offset, element: child };
-      else return closest;
-    },
-    { offset: Number.NEGATIVE_INFINITY },
-  ).element;
-}
-
-// --- UPDATE FIELD ORDER AFTER DRAG ---
-function updateFieldOrder() {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) return;
-
-  const newFields = [];
-
-  noteArea.querySelectorAll(".field").forEach((container) => {
-    const id = container.dataset.id;
-    const field = tab.fields.find((f) => f.id === id);
-    if (field) newFields.push(field);
-  });
-
-  tab.fields = newFields;
-  saveState();
-}
-
-// --- UPDATE TAB ORDER AFTER DRAG ---
-function updateTabOrder() {
-  const newTabs = [];
-  tabsEl.querySelectorAll("button.tab").forEach((btn) => {
-    const t = state.tabs.find(
-      (x) => x.id === btn.title || x.name === btn.textContent,
-    );
-    if (t) newTabs.push(t);
-  });
-  state.tabs = newTabs;
-  saveState();
-}
-
-// --- Copy notification ---
-let noticeTimeout = 0;
-function flashNotice(msg) {
-  clearTimeout(noticeTimeout);
-  let el = document.getElementById("__notice");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "__notice";
-    el.style.position = "fixed";
-    el.style.bottom = "18px";
-    el.style.left = "50%";
-    el.style.transform = "translateX(-50%)";
-    el.style.background = "rgba(8,12,16,.9)";
-    el.style.color = "#d1fae5";
-    el.style.padding = "10px 14px";
-    el.style.borderRadius = "12px";
-    el.style.boxShadow = "0 6px 18px rgba(2,6,23,.6)";
-    el.style.zIndex = "9999";
-    document.body.appendChild(el);
-  }
-  el.textContent = msg;
-  el.style.opacity = "1";
-  noticeTimeout = setTimeout(() => {
-    el.style.opacity = "0";
-  }, 1500);
-}
-
-// --- BUTTONS ---
-addTabBtn.addEventListener("click", () => {
-  const name = prompt("Name for new tab", "New tab");
-  if (name === null) return;
-  const tab = {
-    id: uid("tab"),
-    name: name.trim() || "New tab",
-    fields: [{ id: uid("f"), type: "label", label: "Title", value: "" }],
-  };
-  state.tabs.push(tab);
-  state.activeTabId = tab.id;
-  saveState();
-  render();
-});
-addLabelBtn.addEventListener("click", () => {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) return;
-  const lbl = prompt("Label for new text field", "Text");
-  tab.fields.push({
-    id: uid("f"),
-    type: "label",
-    label: lbl === null ? "Text" : lbl.trim() || "Text",
-    value: "",
-  });
-  saveState();
-  renderNoteArea();
-});
-addTextareaBtn.addEventListener("click", () => {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) return;
-  const lbl = prompt("Label for new note field", "Note");
-  tab.fields.push({
-    id: uid("f"),
-    type: "textarea",
-    label: lbl === null ? "Note" : lbl.trim() || "Note",
-    value: "",
-  });
-  saveState();
-  renderNoteArea();
-});
-clearTabBtn.addEventListener("click", () => {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) return;
-
-  if (!confirm('Clear all fields in tab "' + tab.name + '"?')) return;
-
-  tab.fields.forEach((f) => {
-    if (f.type !== "image") f.value = "";
-  });
-
-  if (state.settings.clearTabDeletesImages) {
-    tab.fields = tab.fields.filter((f) => f.type !== "image");
-  }
-  saveState();
-  renderNoteArea();
-});
-addTemplateBtn.addEventListener("click", () => {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  if (!tab) return;
-
-  tab.fields.push({
-    id: uid("f"),
-    type: "template",
-    label: "Template",
-    value: "",
-  });
-
-  saveState();
-  renderNoteArea();
-});
-
-exportBtn.addEventListener("click", () => {
-  try {
-    const dataStr = JSON.stringify(state, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `notebook-backup-${new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace(/[:T]/g, "-")}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    flashNotice("Exported to file");
-  } catch (e) {
-    alert("Could not export: " + e.message);
-  }
-});
-importBtn.addEventListener("click", () => {
-  importFile.click();
-});
-importFile.addEventListener("change", (e) => {
-  const f = e.target.files && e.target.files[0];
-  if (f) {
-    handleImportFile(f);
-    importFile.value = "";
-  }
-});
-
-function handleImportFile(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const imported = JSON.parse(e.target.result);
-      if (!imported || !Array.isArray(imported.tabs))
-        throw new Error("Invalid format");
-      const replace = confirm(
-        "Replace existing notes with file contents? (OK = Replace, Cancel = Merge)",
-      );
-      if (replace) {
-        state.tabs = imported.tabs.map((t) => ({
-          id: uid("tab"),
-          name: t.name || "Imported tab",
-          fields: Array.isArray(t.fields) ? t.fields.map(importField) : [],
-        }));
-        state.activeTabId = state.tabs.length ? state.tabs[0].id : null;
-        saveState();
-        render();
-        flashNotice("Import completed: Replaced existing");
-      } else {
-        imported.tabs.forEach((t) => {
-          const tab = {
-            id: uid("tab"),
-            name: t.name || "Imported tab",
-            fields: Array.isArray(t.fields) ? t.fields.map(importField) : [],
-          };
-          state.tabs.push(tab);
-        });
-        if (!state.activeTabId && state.tabs.length)
-          state.activeTabId = state.tabs[0].id;
-        saveState();
-        render();
-        flashNotice("Import completed: Merged");
-      }
-    } catch (err) {
-      alert("Import error: " + err.message);
-    }
-  };
-  reader.onerror = () => {
-    alert("Could not read file");
-  };
-  reader.readAsText(file);
-}
-
-function importField(f) {
-  if (f.type === "image") {
-    return {
-      id: uid("f"),
-      type: "image",
-      label: f.label || "Image",
-      value: f.value || "",
-      width: typeof f.width === "number" ? f.width : undefined,
-      height: typeof f.height === "number" ? f.height : undefined,
-    };
-  }
-
-  if (f.type === "image" && typeof f.value !== "string") {
-    console.warn("Skipping invalid image field", f);
-    return null;
-  }
-
-  if (f.type === "textarea") {
-    return {
-      id: uid("f"),
-      type: "textarea",
-      label: f.label || "Text",
-      value: f.value || "",
-    };
-  }
-
-  return {
-    id: uid("f"),
-    type: "label",
-    label: f.label || "Text",
-    value: f.value || "",
-  };
-}
-
-function getAllFields() {
-  return state.tabs.flatMap((t) => t.fields);
-}
-
-// --- TEMPLATE RESOLVERS ---
-function resolveTemplate(template, fields) {
-  return template.replace(/\$\((.*?)\)/g, (_, expr) => {
-    return resolvePlaceholder(expr, fields);
-  });
-}
-function resolvePlaceholder(expr, fields) {
-  let tabName = null;
-  let keyAndParam = expr;
-
-  // Tab-qualified reference: Tab.Field|param
-  if (expr.includes(".")) {
-    const parts = expr.split(".");
-    tabName = parts.shift();
-    keyAndParam = parts.join(".");
-  }
-
-  const [key, param] = keyAndParam.split("|");
-
-  const field = fields.find((f) => {
-    if (tabName) {
-      const parentTab = state.tabs.find((t) => t.fields.includes(f));
-      if (!parentTab || parentTab.name !== tabName) return false;
-    }
-    return f.label === key || f.id === key;
-  });
-
-  if (!field || typeof field.value !== "string") return "";
-
-  const lines = field.value.split(/\r?\n/);
-
-  if (!param) return field.value;
-
-  // line number parameter
-  if (/^\d+$/.test(param)) {
-    return lines[parseInt(param, 10) - 1] ?? "";
-  }
-
-  // custom delimiter parameter
-  if (param.toLowerCase().startsWith("join:")) {
-    const delimiter = param.slice(5);
-    return lines
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .join(delimiter);
-  }
-
-  // preset formatting parameters
-  switch (param.toLowerCase()) {
-    case "csv":
-      return lines
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .join(",");
-    case "lines":
-      return field.value
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean)
-        .join("\n");
-    default:
-      return field.value;
-  }
-}
-
-// --- SETTINGS DIALOG ---
-const settingsDialog = document.getElementById("settingsDialog");
-
-const experimentalToggle = document.getElementById("experimentalToggle");
-const clearImageToggle = document.getElementById("clearImageToggle");
-
-experimentalToggle.checked = state.settings.experimental;
-clearImageToggle.checked = state.settings.clearTabDeletesImages;
-
-experimentalToggle.addEventListener("change", () => {
-  state.settings.experimental = experimentalToggle.checked;
-  saveState();
-  syncExperimentalUI();
-});
-
-clearImageToggle.addEventListener("change", () => {
-  state.settings.clearTabDeletesImages = clearImageToggle.checked;
-  saveState();
-});
-
-function syncSettingsUI() {
-  experimentalToggle.checked = !!state.settings.experimental;
-  clearImageToggle.checked = !!state.settings.clearTabDeletesImages;
-  syncExperimentalUI();
-}
-
-function syncExperimentalUI() {
-  if (state.settings.experimental) {
-    addTemplateBtn.classList.remove("hidden");
-  } else {
-    addTemplateBtn.classList.add("hidden");
-  }
-}
-
-document.getElementById("settingsBtn").addEventListener("click", () => {
-  settingsDialog.showModal();
-  openSettings();
-});
-
-function openSettings() {
-  const styles = getComputedStyle(document.documentElement);
-
-  settingsDialog.querySelectorAll(".color-row").forEach((row) => {
-    const colorInput = row.querySelector('input[type="color"]');
-    const textInput = row.querySelector(".color-text");
-    const cssVar = colorInput.dataset.cssVar;
-
-    const value =
-      styles.getPropertyValue(cssVar).trim() || DEFAULT_COLORS[cssVar];
-
-    colorInput.value = value;
-    textInput.value = value;
-
-    setupColorPicker(colorInput, textInput, cssVar);
-  });
-}
-
-// --- ABOUT DIALOG ---
-const aboutDialog = document.getElementById("aboutDialog");
-const version =
-  document.querySelector('meta[name="app-version"]')?.content || "unknown";
-
-document.getElementById("aboutVersion").textContent = `Version ${version}`;
-
-document.getElementById("aboutBtn").addEventListener("click", () => {
-  aboutDialog.showModal();
-});
-
-document.querySelectorAll("dialog").forEach((dialog) => {
-  dialog.addEventListener("click", (e) => {
-    const rect = dialog.getBoundingClientRect();
-    const clickedOutside =
-      e.clientX < rect.left ||
-      e.clientX > rect.right ||
-      e.clientY < rect.top ||
-      e.clientY > rect.bottom;
-
-    if (clickedOutside) {
-      dialog.close();
-    }
-  });
-});
-
-// --- COLOR THEME MANAGER ---
-settingsDialog.addEventListener("input", (e) => {
-  const input = e.target;
-  const cssVar = input.dataset.cssVar;
-  if (!cssVar) return;
-
-  document.documentElement.style.setProperty(cssVar, input.value);
-
-  saveLiveColors();
-});
-
-function saveLiveColors() {
-  const colors = getCurrentColors();
-  localStorage.setItem(LIVE_COLORS_KEY, JSON.stringify(colors));
-}
-
-document.getElementById("resetColorsBtn").addEventListener("click", () => {
-  applyThemeByName("Default Dark");
-  localStorage.removeItem(LIVE_COLORS_KEY);
-  openSettings();
-});
-
-function setupColorPicker(colorInput, textInput, cssVar) {
-  // Color picker → text input + CSS var
-  colorInput.addEventListener("input", () => {
-    textInput.value = colorInput.value;
-    document.documentElement.style.setProperty(cssVar, colorInput.value);
-    saveLiveColors();
-  });
-
-  // Text input → color picker + CSS var
-  textInput.addEventListener("input", () => {
-    const val = textInput.value.trim();
-    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(val)) {
-      colorInput.value = val;
-      document.documentElement.style.setProperty(cssVar, val);
-      saveLiveColors();
-    }
-  });
-}
-
-// Themes
-function loadThemes() {
-  return JSON.parse(localStorage.getItem(THEMES_KEY) || "[]");
-}
-
-function saveThemes(themes) {
-  localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
-}
-
-function renderThemeSelect() {
-  const select = document.getElementById("themeSelect");
-  select.innerHTML = "";
-
-  // Default themes
-  Object.keys(DEFAULT_THEMES).forEach((name) => {
-    const opt = document.createElement("option");
+function refreshDropdown() {
+  boardSelect.innerHTML = "";
+  for (let name in boards) {
+    let opt = document.createElement("option");
     opt.value = name;
     opt.textContent = name;
-    select.appendChild(opt);
-  });
-
-  // User themes
-  loadThemes().forEach((t) => {
-    const opt = document.createElement("option");
-    opt.value = t.name;
-    opt.textContent = t.name;
-    select.appendChild(opt);
-  });
-
-  // Restore active theme
-  const active = localStorage.getItem(ACTIVE_THEME_KEY) || "Default Dark";
-  select.value = active;
-}
-renderThemeSelect();
-
-function applyThemeByName(name, options = { clearLive: true }) {
-  let colors;
-
-  if (options.clearLive) {
-    localStorage.removeItem(LIVE_COLORS_KEY); // only remove if explicitly requested
-  }
-
-  localStorage.setItem(ACTIVE_THEME_KEY, name);
-
-  if (isDefaultTheme(name)) {
-    colors = DEFAULT_THEMES[name];
-  } else {
-    const theme = loadThemes().find((t) => t.name === name);
-    if (!theme) return;
-    colors = theme.colors;
-  }
-
-  for (const key in DEFAULT_COLORS) {
-    if (colors[key]) {
-      document.documentElement.style.setProperty(key, colors[key]);
-    }
+    boardSelect.appendChild(opt);
   }
 }
+refreshDropdown();
 
-document.getElementById("themeSelect").addEventListener("change", (e) => {
-  const name = e.target.value;
-  applyThemeByName(name);
-  openSettings(); // re-sync color inputs
+// ------------- MEDIA DATABASE -------------
+async function initMediaDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("QuizMediaDB", 1);
+
+    request.onupgradeneeded = function (event) {
+      mediaDB = event.target.result;
+      if (!mediaDB.objectStoreNames.contains("media")) {
+        mediaDB.createObjectStore("media", { keyPath: "id" });
+      }
+    };
+
+    request.onsuccess = function (event) {
+      mediaDB = event.target.result;
+      resolve();
+    };
+
+    request.onerror = function () {
+      reject("IndexedDB failed to open.");
+    };
+  });
+}
+initMediaDB();
+
+function saveMediaBlob(id, blob) {
+  return new Promise((resolve, reject) => {
+    const tx = mediaDB.transaction("media", "readwrite");
+    const store = tx.objectStore("media");
+
+    store.put({ id, blob });
+
+    tx.oncomplete = resolve;
+    tx.onerror = reject;
+  });
+}
+
+function getMediaBlob(id) {
+  return new Promise((resolve, reject) => {
+    const tx = mediaDB.transaction("media", "readonly");
+    const store = tx.objectStore("media");
+
+    const request = store.get(id);
+
+    request.onsuccess = () => {
+      resolve(request.result ? request.result.blob : null);
+    };
+
+    request.onerror = reject;
+  });
+}
+
+function deleteMediaBlob(id) {
+  const tx = mediaDB.transaction("media", "readwrite");
+  tx.objectStore("media").delete(id);
+}
+
+// ------------- INITIALIZE -------------
+async function initApp() {
+  boards = JSON.parse(localStorage.getItem("jeopardyBoards") || "{}");
+  await initMediaDB();
+  refreshDropdown();
+
+  document.getElementById("newBoardBtn").onclick = createBoard;
+  document.getElementById("editBoardBtn").onclick = editBoard;
+  document.getElementById("playBoardBtn").onclick = playBoard;
+  document.getElementById("deleteBoardBtn").onclick = deleteBoard;
+  document.getElementById("exportBoardBtn").onclick = exportBoard;
+  document.getElementById("importFile").onchange = importBoard;
+  document.getElementById("generateGridBtn").onclick = generateGrid;
+  document.getElementById("saveBoardBtn").onclick = saveBoard;
+  document.getElementById("addTeamBtn").onclick = addTeam;
+  document.getElementById("finalBtn").onclick = openFinalQuestion;
+
+  document.querySelectorAll(".backBtn").forEach((btn) => {
+    btn.onclick = backToMenu;
+  });
+}
+initApp();
+
+const aboutBtn = document.getElementById("aboutInfo");
+const infoModal = document.getElementById("infoModal");
+
+aboutBtn.addEventListener("click", () => {
+  infoModal.classList.add("active");
 });
 
-// Add theme button handler
-document.getElementById("addThemeBtn").addEventListener("click", () => {
-  const name = prompt("Name for the new theme");
-  if (!name) return;
-
-  const styles = getComputedStyle(document.documentElement);
-  const colors = {};
-  for (const key in DEFAULT_COLORS) {
-    colors[key] = styles.getPropertyValue(key).trim();
+infoModal.addEventListener("click", (e) => {
+  if (e.target === infoModal) {
+    infoModal.classList.remove("active");
   }
-
-  // Load existing themes
-  const themes = JSON.parse(localStorage.getItem(THEMES_KEY) || "[]");
-
-  // Add new theme
-  themes.push({ name: name.trim(), colors });
-  localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
-
-  // Re-render dropdown
-  renderThemeSelect();
-
-  flashNotice(`Theme "${name.trim()}" added`);
 });
 
-document.getElementById("exportThemeBtn").addEventListener("click", () => {
-  const name = prompt("Theme name:");
+document.getElementById("closeInfo").addEventListener("click", () => {
+  infoModal.classList.remove("active");
+});
+
+// ------------- BOARD MANAGEMENT -------------
+function createBoard() {
+  let name = prompt("Board name?");
   if (!name) return;
-
-  const colors = {};
-  for (const key in DEFAULT_COLORS) {
-    colors[key] = getComputedStyle(document.documentElement)
-      .getPropertyValue(key)
-      .trim();
-  }
-
-  const data = {
-    name,
-    colors,
+  boards[name] = {
+    categories: [],
+    final: null,
+    visibleCategories: 5,
+    visibleRows: 5,
   };
 
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
+  saveLocal();
+  refreshDropdown();
+}
+
+function deleteBoard() {
+  let name = boardSelect.value;
+  if (confirm("Delete board?")) {
+    delete boards[name];
+    saveLocal();
+    refreshDropdown();
+  }
+}
+
+function editBoard() {
+  let name = boardSelect.value;
+  if (!name) return;
+  currentBoard = boards[name];
+
+  document.getElementById("catCount").value =
+    currentBoard.visibleCategories || 5;
+  document.getElementById("rowCount").value = currentBoard.visibleRows || 5;
+
+  mainMenu.classList.add("hidden");
+  editor.classList.remove("hidden");
+  generateGrid();
+}
+
+function playBoard() {
+  let name = boardSelect.value;
+  currentBoard = boards[name];
+  mainMenu.classList.add("hidden");
+  playMode.classList.remove("hidden");
+  buildBoard();
+}
+
+function backToMenu() {
+  editor.classList.add("hidden");
+  playMode.classList.add("hidden");
+  mainMenu.classList.remove("hidden");
+}
+
+// ------------- EDITOR -------------
+function generateGrid() {
+  let requestedCats = parseInt(document.getElementById("catCount").value);
+  let requestedRows = parseInt(document.getElementById("rowCount").value);
+
+  if (!currentBoard.visibleCategories)
+    currentBoard.visibleCategories = requestedCats;
+  if (!currentBoard.visibleRows) currentBoard.visibleRows = requestedRows;
+
+  currentBoard.visibleCategories = requestedCats;
+  currentBoard.visibleRows = requestedRows;
+
+  while (currentBoard.categories.length < requestedCats) {
+    currentBoard.categories.push({
+      title: "Category " + (currentBoard.categories.length + 1),
+      questions: [],
+    });
+  }
+
+  currentBoard.categories.forEach((cat) => {
+    while (cat.questions.length < requestedRows) {
+      cat.questions.push({
+        value: (cat.questions.length + 1) * 100,
+        type: "text",
+        question: "",
+        answer: "",
+        media: [],
+      });
+    }
   });
 
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name.replace(/\s+/g, "-")}-notabletheme.json`;
-  a.click();
+  renderEditorGrid();
+}
+
+function renderEditorGrid() {
+  const grid = document.getElementById("editorGrid");
+  grid.innerHTML = "";
+
+  const columnsRow = document.createElement("div");
+  columnsRow.className = "editorGridColumns";
+  for (let c = 0; c < currentBoard.visibleCategories; c++) {
+    let category = currentBoard.categories[c];
+
+    let div = document.createElement("div");
+    div.className = "editorColumn";
+
+    let title = document.createElement("h3");
+    title.contentEditable = true;
+    title.textContent = category.title;
+    title.oninput = () => (category.title = title.textContent);
+
+    div.appendChild(title);
+
+    for (let r = 0; r < currentBoard.visibleRows; r++) {
+      let q = category.questions[r];
+
+      const btn = document.createElement("button");
+      btn.className = "editorTile";
+      btn.onclick = () => editQuestion(c, r);
+
+      const valueSpan = document.createElement("span");
+      valueSpan.className = "editorTileValue";
+      valueSpan.textContent = "$" + q.value;
+
+      const icon = document.createElement("i");
+      icon.className = getQuestionIconClass(q.type) + " editorTileIcon";
+
+      btn.appendChild(icon);
+      btn.appendChild(valueSpan);
+
+      q._editorButton = btn;
+
+      q._editorButton = btn;
+
+      div.appendChild(btn);
+    }
+
+    columnsRow.appendChild(div);
+  }
+  grid.appendChild(columnsRow);
+
+  const finalRow = document.createElement("div");
+  finalRow.className = "finalRow";
+  const editFinalBtn = document.createElement("button");
+  editFinalBtn.textContent = "Final Jeopardy";
+  editFinalBtn.className = "editFinalBtn";
+  editFinalBtn.onclick = () => editFinal();
+
+  finalRow.appendChild(editFinalBtn);
+  grid.appendChild(finalRow);
+}
+
+function getQuestionIconClass(type) {
+  switch (type) {
+    case "video":
+      return "fa-solid fa-video";
+    case "audio":
+      return "fa-solid fa-volume-high";
+    case "text":
+    default:
+      return "fa-solid fa-font";
+  }
+}
+
+let editingCoords = null;
+
+async function editQuestion(c, r) {
+  try {
+    editingCoords = { c, r };
+    const q = currentBoard.categories[c].questions[r];
+
+    document.getElementById("editValue").value = q.value;
+    document.getElementById("editHintCost").value = q.hintCost || 0;
+    document.getElementById("editType").value = q.type;
+    document.getElementById("editQuestionText").value = q.question;
+    document.getElementById("editAnswerText").value = q.answer;
+
+    editingMedia = [];
+
+    if (q.media && Array.isArray(q.media)) {
+      for (let m of q.media) {
+        if (m.type === "embed") {
+          editingMedia.push({
+            type: "embed",
+            url: m.url || "",
+            label: m.label || "",
+            role: m.role || "question",
+            name: m.name || "Embedded Media",
+            mediaId: m.mediaId || null,
+          });
+        } else {
+          try {
+            const blob = await getMediaBlob(m.mediaId);
+            if (!blob) continue;
+            editingMedia.push({
+              mediaId: m.mediaId,
+              label: m.label || "",
+              type: blob.type,
+              name: m.name || "Imported File",
+              tempFile: blob,
+              role: m.role || "question",
+            });
+          } catch (err) {
+            console.warn("Failed to load media", m, err);
+          }
+        }
+      }
+    }
+
+    await renderMediaPreview();
+
+    document.getElementById("editMedia").value = "";
+    document.getElementById("editorModal").classList.add("active");
+  } catch (err) {
+    console.error("Error opening editor:", err);
+    alert("Failed to open editor. See console for details.");
+  }
+}
+
+document.getElementById("addMediaBtn").onclick = () => {
+  document.getElementById("editMedia").click();
+};
+
+document.getElementById("addEmbedBtn").onclick = () => {
+  addEmbedInput();
+};
+
+document.getElementById("editMedia").addEventListener("change", async (e) => {
+  const files = e.target.files;
+
+  for (let file of files) {
+    const mediaId = "media_" + crypto.randomUUID();
+
+    await saveMediaBlob(mediaId, file);
+
+    editingMedia.push({
+      mediaId: mediaId,
+      label: "",
+      type: file.type,
+      name: file.name,
+      role: "question",
+    });
+  }
+
+  renderMediaPreview();
+  e.target.value = "";
 });
 
-document.getElementById("importThemeBtn").addEventListener("click", () => {
-  document.getElementById("importThemeFile").click();
-});
+function addEmbedInput() {
+  const container = document.getElementById("mediaPreviewList");
 
-document.getElementById("importThemeFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const embedObj = {
+    type: "embed",
+    url: "",
+    label: "",
+    role: "question",
+  };
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const imported = JSON.parse(reader.result);
-      if (!imported.name || !imported.colors) throw "Invalid theme file";
+  editingMedia.push(embedObj);
+  renderMediaPreview();
+}
 
-      const themes = loadThemes();
+function editFinal() {
+  if (!currentBoard.final) {
+    currentBoard.final = {
+      value: 0,
+      type: "text",
+      question: "",
+      answer: "",
+      media: [],
+      hintCost: 0,
+    };
+  }
+  editQuestionFinal(currentBoard.final);
+}
 
-      // Prevent duplicate names
-      if (themes.some((t) => t.name === imported.name)) {
-        imported.name += " (imported)";
+async function editQuestionFinal(finalQuestion) {
+  editingCoords = null;
+  const q = finalQuestion;
+
+  document.getElementById("editValue").value = q.value || 0;
+  document.getElementById("editHintCost").value = q.hintCost || 0;
+  document.getElementById("editType").value = q.type || "text";
+  document.getElementById("editQuestionText").value = q.question || "";
+  document.getElementById("editAnswerText").value = q.answer || "";
+
+  editingMedia = [];
+
+  if (q.media && Array.isArray(q.media)) {
+    for (let m of q.media) {
+      if (!m.mediaId) continue;
+      const blob = await getMediaBlob(m.mediaId);
+      if (!blob) continue;
+      editingMedia.push({
+        mediaId: m.mediaId,
+        label: m.label || "",
+        type: blob.type,
+        name: m.name || "Imported File",
+        tempFile: blob,
+        role: m.role || "question",
+      });
+    }
+  }
+
+  renderMediaPreview();
+  document.getElementById("editMedia").value = "";
+  document.getElementById("editorModal").classList.add("active");
+}
+
+async function renderMediaPreview() {
+  const container = document.getElementById("mediaPreviewList");
+  container.innerHTML = "";
+
+  for (let index = 0; index < editingMedia.length; index++) {
+    const file = editingMedia[index];
+    const isEmbed = file.type === "embed";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "mediaItem";
+
+    const previewWrapper = document.createElement("div");
+    previewWrapper.className = "mediaPreviewWrapper";
+
+    // Label and media display role
+    const labelRoleRow = document.createElement("div");
+    labelRoleRow.style.display = "flex";
+    labelRoleRow.style.gap = "10px";
+    labelRoleRow.style.alignItems = "center";
+
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.placeholder = "Optional label: $(hint)";
+    labelInput.value = file.label || "";
+    labelInput.className = "mediaLabelInput";
+    labelInput.addEventListener("input", () => {
+      file.label = labelInput.value;
+    });
+
+    const roleSelect = document.createElement("select");
+    roleSelect.className = "mediaRoleSelect";
+
+    const roles = [
+      { value: "question", text: "Question" },
+      { value: "hint", text: "Hint" },
+      { value: "answer", text: "Answer" },
+    ];
+
+    roles.forEach((r) => {
+      const option = document.createElement("option");
+      option.value = r.value;
+      option.textContent = r.text;
+      if ((file.role || "question") === r.value) {
+        option.selected = true;
+      }
+      roleSelect.appendChild(option);
+    });
+
+    roleSelect.addEventListener("change", () => {
+      file.role = roleSelect.value;
+    });
+
+    labelRoleRow.appendChild(labelInput);
+    labelRoleRow.appendChild(roleSelect);
+    wrapper.appendChild(labelRoleRow);
+
+    let preview;
+    
+    // Embed media
+    if (isEmbed) {
+      const urlPreviewRow = document.createElement("div");
+      urlPreviewRow.className = "mediaUrlPreviewRow";
+
+      const urlInput = document.createElement("input");
+      urlInput.type = "text";
+      urlInput.placeholder = "Enter media URL...";
+      urlInput.value = file.url || "";
+      urlInput.className = "mediaUrlInput";
+      urlInput.addEventListener("input", () => {
+        file.url = urlInput.value;
+      });
+
+      const previewBtn = document.createElement("button");
+      previewBtn.textContent = "Preview";
+      previewBtn.className = "previewMediaBtn";
+
+      urlPreviewRow.appendChild(urlInput);
+      urlPreviewRow.appendChild(previewBtn);
+      wrapper.appendChild(urlPreviewRow);
+
+      const previewContainer = document.createElement("div");
+      previewContainer.className = "embedPreviewContainer";
+
+      const placeholder = document.createElement("div");
+      placeholder.className = "embedPreviewPlaceholder";
+      placeholder.textContent = "Embedded media (no preview yet)";
+
+      previewContainer.appendChild(placeholder);
+      previewWrapper.appendChild(previewContainer);
+
+      if (file.url && file.url.trim()) {
+        renderEmbedPreview(file, previewContainer);
       }
 
-      // Add imported theme
-      themes.push(imported);
-      saveThemes(themes);
-      renderThemeSelect();
+      previewBtn.onclick = () => renderEmbedPreview(file, previewContainer);
+    } else {
+      if (file.type.startsWith("image/")) {
+        preview = document.createElement("img");
+      } else if (file.type.startsWith("audio/")) {
+        preview = document.createElement("audio");
+        preview.controls = true;
+      } else if (file.type.startsWith("video/")) {
+        preview = document.createElement("video");
+        preview.controls = true;
+      } else {
+        preview = document.createElement("div");
+        preview.textContent = file.name;
+      }
 
-      // **Apply the imported theme**
-      applyThemeByName(imported.name, { clearLive: true });
+      if (file.mediaId && file.tempFile) {
+        preview.src = URL.createObjectURL(file.tempFile);
+      }
 
-      // **Set as active theme in storage**
-      localStorage.setItem(ACTIVE_THEME_KEY, imported.name);
+      preview.className = "mediaPreview";
+      previewWrapper.appendChild(preview);
+    }
 
-      flashNotice(`Theme "${imported.name}" imported and applied`);
-    } catch {
-      alert("Invalid theme file");
+    const removeBtn = document.createElement("button");
+    removeBtn.innerHTML = "<span>✕</span>";
+    removeBtn.className = "removeMediaBtn";
+    removeBtn.onclick = () => {
+      if (file.mediaId) deleteMediaBlob(file.mediaId);
+      editingMedia.splice(index, 1);
+      renderMediaPreview();
+    };
+
+    wrapper.appendChild(previewWrapper);
+    previewWrapper.appendChild(removeBtn);
+    container.appendChild(wrapper);
+  }
+}
+
+function renderEmbedPreview(file, previewContainer) {
+  previewContainer.innerHTML = "";
+
+  const url = file.url?.trim();
+  if (!url) return;
+
+  let element;
+
+  if (url.match(/\.(mp4|webm|ogg)$/i)) {
+    element = document.createElement("video");
+    element.controls = true;
+    element.src = url;
+  } else if (url.match(/\.(mp3|wav|ogg)$/i)) {
+    element = document.createElement("audio");
+    element.controls = true;
+    element.src = url;
+  } else if (url.match(/\.(jpg|jpeg|png|gif|webp|avif)$/i)) {
+    element = document.createElement("img");
+    element.src = url;
+  } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    element = document.createElement("iframe");
+    element.src = convertYouTubeUrl(url);
+    element.allowFullscreen = true;
+  } else {
+    previewContainer.textContent = "Unsupported embed format.";
+    return;
+  }
+
+  element.className = "mediaPreview";
+  previewContainer.appendChild(element);
+}
+
+function convertYouTubeUrl(url) {
+  const match = url.match(/(?:v=|youtu\.be\/)([^&]+)/);
+  if (!match) return url;
+  return `https://www.youtube.com/embed/${match[1]}`;
+}
+
+document.getElementById("cancelQuestionBtn").onclick = () => {
+  document.getElementById("editorModal").classList.remove("active");
+};
+
+document.getElementById("saveQuestionBtn").onclick = async () => {
+  let q;
+
+  if (editingCoords) {
+    const { c, r } = editingCoords;
+    q = currentBoard.categories[c].questions[r];
+  } else {
+    q = currentBoard.final;
+  }
+
+  q.value = parseInt(document.getElementById("editValue").value) || 0;
+  q.hintCost = parseInt(document.getElementById("editHintCost").value) || 0;
+  q.type = document.getElementById("editType").value;
+  q.question = document.getElementById("editQuestionText").value;
+  q.answer = document.getElementById("editAnswerText").value;
+
+  const finalMedia = [];
+
+  for (let m of editingMedia) {
+    if (m.tempFile) {
+      await saveMediaBlob(m.mediaId, m.tempFile);
+    }
+
+    if (m.type === "embed" && !m.mediaId) {
+      m.mediaId = "embed_" + crypto.randomUUID();
+    }
+
+    finalMedia.push({
+      mediaId: m.mediaId,
+      label: m.label || "",
+      type: m.type,
+      name: m.name,
+      role: m.role || "question",
+      url: m.type === "embed" ? m.url : undefined,
+    });
+  }
+
+  q.media = finalMedia;
+
+  if (q._editorButton) {
+    const valueEl = q._editorButton.querySelector(".editorTileValue");
+    const iconEl = q._editorButton.querySelector(".editorTileIcon");
+
+    if (valueEl) {
+      valueEl.textContent = "$" + q.value;
+    }
+
+    if (iconEl) {
+      iconEl.className = getQuestionIconClass(q.type) + " editorTileIcon";
+    }
+  }
+
+  q.type = document.getElementById("editType").value;
+  q.question = document.getElementById("editQuestionText").value;
+  q.answer = document.getElementById("editAnswerText").value;
+
+  document.getElementById("editorModal").classList.remove("active");
+
+  saveLocal();
+};
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+}
+
+function saveBoard() {
+  saveLocal();
+  showToast("Saved!");
+}
+
+function showToast(message, duration = 2000) {
+  const container = document.getElementById("toastContainer");
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("show");
+  }, 10);
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => container.removeChild(toast), 400);
+  }, duration);
+}
+
+// ------------- PLAY MODE -------------
+function buildBoard() {
+  let table = document.getElementById("board");
+  table.innerHTML = "";
+  scoreboard.innerHTML = "";
+
+  let header = document.createElement("tr");
+  for (let c = 0; c < currentBoard.visibleCategories; c++) {
+    let cat = currentBoard.categories[c];
+    let th = document.createElement("th");
+    th.textContent = cat.title;
+    header.appendChild(th);
+  }
+  table.appendChild(header);
+
+  let rows = currentBoard.visibleRows;
+  for (let r = 0; r < rows; r++) {
+    let tr = document.createElement("tr");
+    for (let c = 0; c < currentBoard.visibleCategories; c++) {
+      let cat = currentBoard.categories[c];
+      let td = document.createElement("td");
+      let q = cat.questions[r];
+      td.textContent = "$" + q.value;
+      td.className = "tile";
+      td.onclick = () => openQuestion(c, r, td);
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+}
+
+function openQuestion(c, r, tile) {
+  currentQuestion = { c, r, tile };
+
+  const q = currentBoard.categories[c].questions[r];
+  const category = currentBoard.categories[c];
+
+  openPlayableQuestion(q, {
+    tile: tile,
+    categoryTitle: category.title,
+    value: q.value,
+    isFinal: false,
+  });
+}
+
+function openFinalQuestion() {
+  openPlayableQuestion(currentBoard.final, {
+    isFinal: true,
+  });
+}
+
+async function openPlayableQuestion(questionData, config = {}) {
+  const {
+    tile = null,
+    categoryTitle = "",
+    value = "",
+    isFinal = false,
+  } = config;
+
+  const questionModal = document.getElementById("questionModal");
+
+  questionModal.innerHTML = "";
+  questionModal.classList.add("active");
+
+  const content = document.createElement("div");
+  content.className = "questionContent";
+
+  const q = questionData;
+
+  // Header
+  const header = document.createElement("h2");
+  header.className = "questionHeader";
+
+  if (isFinal) {
+    header.textContent = "Final Jeopardy";
+  } else {
+    header.textContent = `${categoryTitle}  $${value}`;
+  }
+
+  content.appendChild(header);
+
+  // Question + Answer
+  if (q.question && q.question.trim() !== "") {
+    const questionText = document.createElement("div");
+    questionText.className = "questionText";
+    questionText.textContent = q.question;
+    content.appendChild(questionText);
+  }
+  const answerEl = document.createElement("div");
+  answerEl.className = "questionAnswer hiddenAnswer";
+  answerEl.textContent = q.answer;
+  content.appendChild(answerEl);
+
+  // Media
+  let mediaContainer = null;
+  let questionMedia = [];
+  let hintMedia = [];
+  let answerMedia = [];
+  let missingMediaDetected = false;
+
+  if (q.media && q.media.length > 0) {
+    for (let file of q.media) {
+      if (file.role === "hint") hintMedia.push(file);
+      else if (file.role === "answer") answerMedia.push(file);
+      else questionMedia.push(file);
+    }
+
+    mediaContainer = document.createElement("div");
+    mediaContainer.className = "questionMedia";
+
+    content.appendChild(mediaContainer);
+
+    async function renderMediaSet(mediaArray) {
+      mediaContainer.innerHTML = "";
+      missingMediaDetected = false;
+
+      for (let file of mediaArray) {
+        if (file.type === "embed") {
+          renderEmbedInModal(file, mediaContainer);
+          continue;
+        }
+
+        const blob = await getMediaBlob(file.mediaId);
+        if (!blob) {
+          missingMediaDetected = true;
+          continue;
+        }
+
+        const url = URL.createObjectURL(blob);
+
+        const labelText = file.label
+          ? file.label.replace(/\$\(\s*hint\s*\)/gi, `$${q.hintCost || 0}`)
+          : "";
+
+        let element;
+
+        if (blob.type.startsWith("video/")) {
+          element = document.createElement("video");
+          element.controls = true;
+          element.style.maxWidth = "80vw";
+        } else if (blob.type.startsWith("audio/")) {
+          element = document.createElement("audio");
+          element.controls = true;
+        } else if (blob.type.startsWith("image/")) {
+          element = document.createElement("img");
+          element.style.maxWidth = "600px";
+        }
+
+        if (element) {
+          element.src = url;
+
+          const wrapper = document.createElement("div");
+          wrapper.className = "questionMediaWrapper";
+
+          wrapper.appendChild(element);
+
+          const labelEl = document.createElement("span");
+          labelEl.textContent = labelText || "";
+          labelEl.className = "questionMediaLabel";
+          wrapper.appendChild(labelEl);
+
+          mediaContainer.appendChild(wrapper);
+        }
+      }
+
+      if (missingMediaDetected) {
+        const warning = document.createElement("div");
+        warning.className = "missingMediaWarning";
+        warning.textContent = "Media file missing. Please re-import the board.";
+        mediaContainer.appendChild(warning);
+      }
+    }
+
+    await renderMediaSet(questionMedia);
+
+    if (hintMedia.length > 0) {
+      const hintWrapper = document.createElement("div");
+      hintWrapper.className = "questionMediaWrapper";
+
+      const hintBtn = document.createElement("button");
+      const cost = q.hintCost || 0;
+      hintBtn.textContent = cost > 0 ? `Show Hint ($${cost})` : "Show Hint";
+      hintBtn.className = "questionMediaHintBtn";
+
+      hintBtn.onclick = async () => {
+        await renderMediaSet([...questionMedia, ...hintMedia]);
+      };
+
+      hintWrapper.appendChild(hintBtn);
+
+      // Add empty label placeholder so layout stays aligned
+      const labelPlaceholder = document.createElement("span");
+      labelPlaceholder.className = "questionMediaLabel";
+      labelPlaceholder.textContent = "";
+      hintWrapper.appendChild(labelPlaceholder);
+
+      mediaContainer.appendChild(hintWrapper);
+    }
+
+    content._renderMediaSet = renderMediaSet;
+  }
+
+  questionModal.appendChild(content);
+
+  // Buttons
+  const buttonRow = document.createElement("div");
+  buttonRow.className = "questionButtons";
+
+  const showAns = document.createElement("button");
+  showAns.textContent = "Show Answer";
+
+  showAns.onclick = async () => {
+    answerEl.classList.add("visibleAnswer");
+
+    if (tile) {
+      tile.classList.add("blank");
+      tile.textContent = "";
+    }
+
+    if (mediaContainer && answerMedia.length > 0 && content._renderMediaSet) {
+      await content._renderMediaSet(answerMedia);
     }
   };
-  reader.readAsText(file);
-});
 
-document.getElementById("deleteThemeBtn").addEventListener("click", () => {
-  const select = document.getElementById("themeSelect");
-  const name = select.value;
+  const back = document.createElement("button");
+  back.textContent = "Back to Board";
+  back.onclick = () => {
+    questionModal.classList.remove("active");
+  };
 
-  if (isDefaultTheme(name)) {
-    alert("Default themes cannot be deleted");
-    return;
-  }
+  buttonRow.appendChild(showAns);
+  buttonRow.appendChild(back);
 
-  if (!confirm(`Delete theme "${name}"?`)) return;
-
-  const themes = loadThemes().filter((t) => t.name !== name);
-  saveThemes(themes);
-
-  localStorage.setItem(ACTIVE_THEME_KEY, "Default Dark");
-  applyThemeByName("Default Dark");
-
-  renderThemeSelect();
-  openSettings();
-});
-
-function getCurrentColors() {
-  const styles = getComputedStyle(document.documentElement);
-  const colors = {};
-  for (const key in DEFAULT_COLORS) {
-    colors[key] = styles.getPropertyValue(key).trim();
-  }
-  return colors;
+  questionModal.appendChild(buttonRow);
 }
 
-document.getElementById("applyThemeBtn").addEventListener("click", () => {
-  const select = document.getElementById("themeSelect");
-  const selectedName = select.value;
+function renderEmbedInModal(file, container) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "questionMediaWrapper";
 
-  // Block default themes
-  if (isDefaultTheme(selectedName)) {
-    alert("Default themes cannot be modified.");
-    return;
+  let element;
+  const url = file.url;
+
+  if (url.match(/\.(mp4|webm|ogg)$/i)) {
+    element = document.createElement("video");
+    element.controls = true;
+    element.src = url;
+  } else if (url.match(/\.(mp3|wav|ogg)$/i)) {
+    element = document.createElement("audio");
+    element.controls = true;
+    element.src = url;
+  } else if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+    element = document.createElement("img");
+    element.src = url;
+  } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    element = document.createElement("iframe");
+    element.src = convertYouTubeUrl(url);
+    element.allowFullscreen = true;
   }
 
-  const themes = loadThemes();
-  const theme = themes.find((t) => t.name === selectedName);
-  if (!theme) {
-    alert("Theme not found.");
-    return;
-  }
+  if (!element) return;
 
-  // Apply current CSS colors to theme
-  theme.colors = getCurrentColors();
-  saveThemes(themes);
+  wrapper.appendChild(element);
 
-  flashNotice(`Theme "${selectedName}" updated`);
-});
+  const labelEl = document.createElement("span");
+  labelEl.className = "questionMediaLabel";
+  labelEl.textContent = file.label || "";
+  wrapper.appendChild(labelEl);
 
-document.getElementById("reapplyThemeBtn").addEventListener("click", () => {
-  const select = document.getElementById("themeSelect");
-  const selectedName = select.value;
-  if (!selectedName) return;
+  container.appendChild(wrapper);
+}
 
-  applyThemeByName(selectedName); // reapply the theme
-  openSettings(); // sync color pickers
-  flashNotice(`Theme "${selectedName}" reapplied`);
-});
+function addTeam() {
+  let teamDiv = document.createElement("div");
+  teamDiv.className = "team";
 
-document.getElementById("themeSelect").addEventListener("contextmenu", (e) => {
-  e.preventDefault();
+  let removeBtn = document.createElement("button");
+  removeBtn.className = "removeTeamBtn";
+  removeBtn.innerHTML = "<span>✕</span>";
+  removeBtn.setAttribute("data-tooltip", "Remove team");
+  removeBtn.onclick = () => {
+    teamDiv.remove();
+    teams = teams.filter((t) => t.div !== teamDiv);
+  };
 
-  const oldName = e.target.value;
-  if (isDefaultTheme(oldName)) return;
+  let name = document.createElement("h4");
+  name.contentEditable = true;
+  name.textContent = "";
+  name.className = "teamName";
+  setTimeout(() => name.focus(), 0);
 
-  const newName = prompt("Rename theme:", oldName);
-  if (!newName || newName === oldName) return;
+  let scoreDiv = document.createElement("div");
+  scoreDiv.className = "teamScore";
 
-  const themes = loadThemes();
-  const theme = themes.find((t) => t.name === oldName);
-  if (!theme) return;
+  const team = { div: teamDiv, name, scoreDiv, score: 0 };
 
-  theme.name = newName;
-  saveThemes(themes);
-  localStorage.setItem(ACTIVE_THEME_KEY, newName);
-
-  renderThemeSelect();
-});
-
-// Show the "New update available!" pill
-function showUpdatePill() {
-  const controls = document.querySelector(".controls");
-
-  // Remove existing pill if any
-  let existing = controls.querySelector("#__update_pill");
-  if (existing) existing.remove();
-
-  // Create pill using the same class as your old pill
-  const pill = document.createElement("span");
-  pill.id = "__update_pill";
-  pill.className = "pill"; // reuse styling
-  pill.textContent = "New update available!";
-  pill.style.cursor = "pointer";
-
-  // When clicked, activate new SW and reload
-  pill.addEventListener("click", () => {
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: "SKIP_WAITING",
-      });
-      window.location.reload();
-    }
+  scoreDiv.textContent = team.score;
+  scoreDiv.contentEditable = true;
+  scoreDiv.addEventListener("blur", () => {
+    let raw = scoreDiv.textContent.trim();
+    let isNegative = raw.startsWith("-");
+    let numericPart = raw.replace(/\D/g, "");
+    let value = parseInt(numericPart) || 0;
+    if (isNegative) value = -value;
+    team.score = value;
+    scoreDiv.textContent = team.score;
+    updateScoreboard();
   });
 
-  // Insert pill as the **first element** in .controls
-  controls.insertBefore(pill, controls.firstChild);
+  let controls = document.createElement("div");
+  controls.className = "teamControls";
+
+  let addBtn = document.createElement("button");
+  addBtn.innerHTML = "<span>+</span>";
+  addBtn.className = "teamAddBtn";
+  addBtn.setAttribute("data-tooltip", "Add points");
+  addBtn.onclick = () => {
+    team.score += getLastQuestionValue();
+    updateScoreboard();
+  };
+
+  let subBtn = document.createElement("button");
+  subBtn.innerHTML = "<span>−</span>";
+  subBtn.className = "teamSubBtn";
+  subBtn.setAttribute("data-tooltip", "Remove points");
+  subBtn.onclick = () => {
+    team.score -= getLastQuestionValue();
+    updateScoreboard();
+  };
+
+  const hintBtn = document.createElement("button");
+  hintBtn.innerHTML = "<span>?</span>";
+  hintBtn.className = "teamHintBtn";
+  hintBtn.setAttribute("data-tooltip", "Remove hint cost");
+  hintBtn.onclick = () => {
+    if (!currentQuestion) return;
+
+    const { c, r } = currentQuestion;
+    const q = currentBoard.categories[c].questions[r];
+    const cost = q.hintCost || 0;
+
+    team.score -= cost;
+    updateScoreboard();
+  };
+
+  controls.appendChild(addBtn);
+  controls.appendChild(subBtn);
+  controls.appendChild(hintBtn);
+
+  teamDiv.appendChild(removeBtn);
+  teamDiv.appendChild(name);
+  teamDiv.appendChild(scoreDiv);
+  teamDiv.appendChild(controls);
+
+  scoreboard.appendChild(teamDiv);
+
+  teams.push(team);
 }
 
-// --- RENDER NOTES AND TABS ---
-function render() {
-  ensureDefault();
-  renderTabs();
-  renderNoteArea();
+function updateScoreboard() {
+  teams.forEach((team) => {
+    team.scoreDiv.textContent = team.score;
+  });
 }
-loadState();
-ensureSettings();
-ensureDefault();
-render();
-syncSettingsUI();
 
-window.addEventListener("beforeunload", saveState);
+function getLastQuestionValue() {
+  if (!currentQuestion) return 0;
 
-document.addEventListener("DOMContentLoaded", () => {
-  const metaVersion = document
-    .querySelector('meta[name="app-version"]')
-    ?.getAttribute("content");
+  const { c, r } = currentQuestion;
+  const q = currentBoard.categories[c].questions[r];
 
-  const versionTarget = document.getElementById("app-version");
-  if (versionTarget && metaVersion) {
-    versionTarget.textContent = `Version ${metaVersion}`;
+  return q.value || 0;
+}
+
+// ------------- IMPORT AND EXPORT -------------
+async function exportBoard() {
+  let name = boardSelect.value;
+  let boardData = boards[name];
+
+  const mediaBundle = [];
+
+  for (let cat of boardData.categories) {
+    for (let q of cat.questions) {
+      if (q.media) {
+        for (let m of q.media) {
+          const blob = await getMediaBlob(m.mediaId);
+          if (!blob) continue;
+
+          const base64 = await fileToBase64(blob);
+
+          mediaBundle.push({
+            id: m.mediaId,
+            type: blob.type,
+            data: base64,
+          });
+        }
+      }
+    }
   }
+
+  const exportData = {
+    board: boardData,
+    media: mediaBundle,
+  };
+
+  const dataStr =
+    "data:text/json;charset=utf-8," +
+    encodeURIComponent(JSON.stringify(exportData));
+
+  const a = document.createElement("a");
+  a.href = dataStr;
+  a.download = name + ".json";
+  a.click();
+}
+
+document.getElementById("importBoardBtn").addEventListener("click", () => {
+  document.getElementById("importFile").click();
 });
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("./sw.js?ver=2")
-    .then((reg) => {
-      console.log("Service Worker registered:", reg);
+async function importBoard(event) {
+  let file = event.target.files[0];
+  let reader = new FileReader();
 
-      // Listen for updates
-      reg.addEventListener("updatefound", () => {
-        const newSW = reg.installing;
-        newSW.addEventListener("statechange", () => {
-          if (
-            newSW.state === "installed" &&
-            navigator.serviceWorker.controller
-          ) {
-            // New update available
-            showUpdatePill();
-          }
-        });
-      });
-    })
-    .catch((err) => console.error("SW registration failed:", err));
+  reader.onload = async function (e) {
+    let data = JSON.parse(e.target.result);
+
+    let name = prompt("Name for imported board?");
+
+    boards[name] = data.board;
+
+    if (data.media && Array.isArray(data.media)) {
+      for (let m of data.media) {
+        const blob = await fetch(m.data).then((r) => r.blob());
+        await saveMediaBlob(m.id, blob);
+      }
+    }
+
+    saveLocal();
+    refreshDropdown();
+  };
+
+  reader.readAsText(file);
 }
